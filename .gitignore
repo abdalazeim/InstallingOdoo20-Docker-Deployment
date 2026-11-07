@@ -1,5 +1,28 @@
+# Odoo Docker deployment: ignore local secrets, data, and logs.
+
+# Secrets and environment files
+.env
+*.env
+
+# Persistent data
 postgresql/
-etc/odoo-server.log*
-etc/addons/
+data/
+filestore/
+
+# Logs
+*.log
+etc/odoo-server.log
 etc/sessions/
-etc/filestore/
+
+# مجلدات النظام
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+.idea/
+node_modules/
+
+# Temporary files
+*.tmp
+*.bak
+*~

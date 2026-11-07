@@ -1,0 +1,73 @@
+# Odoo 20 Private Repository - Traefik Mode
+#
+# وضع ترافيك: أودو لا يُنشر على منافذ المضيف مباشرة؛
+# ينضم إلى شبكة "proxy" المشتركة ويُوجّه عبر ترافيك على HTTPS.
+# تبقى قاعدة بيانات PostgreSQL على الشبكة الداخلية فقط.
+
+version: '3.8'
+
+services:
+  db:
+    container_name: ${ODOO_DB_CONTAINER_NAME:-odoo20-db}
+    image: ${PG_IMAGE:-postgres:18}
+    user: root
+    restart: always
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-odoo20}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-odoo@20}
+      - POSTGRES_DB=${POSTGRES_DB:-postgre}
+    volumes:
+      - ./postgresql:/var/lib/postgresql/data
+    networks:
+      - internal
+
+  odoo20:
+    container_name: ${ODOO_CONTAINER_NAME:-odoo20}
+    image: ${ODOO_IMAGE:-odoo:20}
+    user: root
+    depends_on:
+      - db
+    restart: always
+    tty: true
+    command: ["--config=/tmp/odoo.conf"]
+    environment:
+      - HOST=db
+      - PORT=5432
+      - USER=${POSTGRES_USER:-odoo20}
+      - PASSWORD=${POSTGRES_PASSWORD:-odoo@20}
+      - ODOO_ADMIN_PASSWORD=${ODOO_ADMIN_PASSWORD:-Admin@20}
+      - PIP_BREAK_SYSTEM_PACKAGES=1
+    volumes:
+      - ./entrypoint.sh:/entrypoint.sh:ro
+      - ./addons:/mnt/extra-addons
+      - ./etc:/etc/odoo
+      - odoo_data:/var/lib/odoo
+    networks:
+      - internal
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${DOCKER_PROXY_NETWORK:-proxy}"
+      - "traefik.http.routers.odoo20.rule=Host(`${ODOO_DOMAIN:?ODOO_DOMAIN is required}`)"
+      - "traefik.http.routers.odoo20.entrypoints=websecure"
+      - "traefik.http.routers.odoo20.tls=true"
+      - "traefik.http.routers.odoo20.tls.certresolver=${CERTSRESOLVER:-letsencrypt}"
+      - "traefik.http.services.odoo20.loadbalancer.server.port=8069"
+
+      - "traefik.http.routers.odoo20-websocket.rule=Host(`${ODOO_DOMAIN}`) && PathPrefix(`/websocket`)"
+      - "traefik.http.routers.odoo20-websocket.entrypoints=websecure"
+      - "traefik.http.routers.odoo20-websocket.tls=true"
+      - "traefik.http.routers.odoo20-websocket.tls.certresolver=${CERTSRESOLVER:-letsencrypt}"
+      - "traefik.http.routers.odoo20-websocket.priority=100"
+      - "traefik.http.services.odoo20-websocket.loadbalancer.server.port=8072"
+
+networks:
+  internal:
+    name: ${ODOO_NETWORK:-odoo20_internal}
+    driver: bridge
+  proxy:
+    external: true
+    name: ${DOCKER_PROXY_NETWORK:-proxy}
+
+volumes:
+  odoo_data:

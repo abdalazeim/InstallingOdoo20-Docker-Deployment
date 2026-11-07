@@ -1,205 +1,366 @@
-# Installing Odoo 20 (2026 release)
+<div align="center">
 
-Set up **Odoo 20** in a single command using Docker Compose — with support for running multiple Odoo instances on one server.
+# Odoo 20 · Docker Deployment
 
-> **Default master password:** `minhng.info` — change it before going live.
+**Odoo 20 + PostgreSQL 18 · Docker Compose · Optional Traefik**
 
-## Quick Start
+[![Odoo 20](https://img.shields.io/badge/Odoo-20-714B67?logo=odoo&logoColor=white)](https://www.odoo.com/)
+[![PostgreSQL 18](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 
-Install [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) first, then run the following to set up your first Odoo instance at `localhost:10020`:
+[Quick Start](#4-quick-start) · [Multiple Instances](#7-multiple-instances) · [Operations](#9-container-management) · [Troubleshooting](#12-troubleshooting)
 
-```bash
-curl -s https://raw.githubusercontent.com/minhng92/odoo-20-docker-compose/master/run.sh \
-  | bash -s -- --destination odoo-one --port 10020 --chat 20020
-```
-
-and/or run the following to set up another Odoo instance at `localhost:11020`:
-
-```bash
-curl -s https://raw.githubusercontent.com/minhng92/odoo-20-docker-compose/master/run.sh \
-  | bash -s -- --destination odoo-two --port 11020 --chat 21020
-```
-
-If `curl` is missing, install it:
-
-```bash
-sudo apt-get install curl     # Debian / Ubuntu
-sudo yum install curl         # RHEL / CentOS
-```
-
-### Arguments
-
-| Flag | Required | Example | Meaning |
-|------|:--------:|---------|---------|
-| `--destination` | Yes | `odoo-one` | Name of the deploy folder where the stack is cloned |
-| `--port` | Yes | `10020` | Odoo web port exposed on the host |
-| `--chat` | Yes | `20020` | Live-chat port exposed on the host |
-| `--password` | No | `mymaster` | Odoo master password (**admin_passwd**). Defaults to the value in **etc/odoo.conf** |
-| `--db-password` | No | `dbSecret` | PostgreSQL password (**POSTGRES_PASSWORD**/**PASSWORD**). Defaults to `odoo20@2026` |
-
-### Examples with custom passwords
-
-Custom master password:
-
-```bash
-curl -s https://raw.githubusercontent.com/minhng92/odoo-20-docker-compose/master/run.sh \
-  | bash -s -- --destination odoo-one --port 10020 --chat 20020 --password mymaster
-```
-
-Custom master + database passwords:
-
-```bash
-curl -s https://raw.githubusercontent.com/minhng92/odoo-20-docker-compose/master/run.sh \
-  | bash -s -- --destination odoo-one --port 10020 --chat 20020 \
-    --password mymaster --db-password dbSecret
-```
-
-## Usage
-
-Start the container:
-
-```bash
-cd odoo-one
-docker-compose up -d
-```
-
-Then open <http://localhost:10020> to access Odoo 20.
-
-## Tips & Troubleshooting
-
-### Fix permission issues
-
-If the container can't read your folders, open them up:
-
-```bash
-sudo chmod -R 777 addons etc postgresql
-```
-
-### Change the Odoo port
-
-Edit **docker-compose.yml** in the parent directory:
-
-```yaml
-ports:
-  - "10020:8069"
-````
-
-### Run in detached mode
-
-Keep Odoo running after you close the terminal:
-
-```bash
-docker-compose up -d
-```
-
-### Set a restart policy
-
-In **docker-compose.yml**, set the `restart` key on a service to one of:
-
-- `no` — don't restart
-- `on-failure[:max-retries]` — restart on crash, optionally capped
-- `always` — always restart
-- `unless-stopped` — always restart, except when stopped by you
-
-```yaml
-restart: always   # run as a service
-```
-
-### Run multiple instances on one machine
-
-Raise the inotify watch limit (Ubuntu) to avoid errors when several instances watch the same tree:
-
-```bash
-if grep -qF "fs.inotify.max_user_watches" /etc/sysctl.conf; then
-  echo $(grep -F "fs.inotify.max_user_watches" /etc/sysctl.conf)
-else
-  echo "fs.inotify.max_user_watches = 524288" | sudo tee -a /etc/sysctl.conf
-fi
-sudo sysctl -p
-```
-
-## Custom Addons
-
-Drop your own addons into the **addons/** folder. It's mounted into Odoo as `/mnt/extra-addons`, so they load automatically.
-
-## Loading Enterprise Addons
-
-You can load Odoo enterprise addons into this project like this:
-
-1. Create a new folder named **enterprise** inside **addons**, and put the enterprise addons in **addons/enterprise**.
-2. Append the path to **addons_path** in the config file at **etc/odoo.conf** (the enterprise folder lives under the same mounted **addons/** folder, so use the container path `/mnt/extra-addons/enterprise`).
-3. Restart the Odoo container (or down and up the Odoo container again):
-
-   ``` bash
-   docker-compose restart
-   # or
-   docker-compose down
-   docker-compose up -d
-   ```
-
-Deploy Odoo enterprise with docker-compose in a **separate directory**, without running the Odoo community database(s) there. After deploying the enterprise version, create a **new enterprise database** and import data from the community version (if you have a running community instance).
-
-## Configuration & Logs
-
-- **Configuration:** edit [`etc/odoo.conf`](etc/odoo.conf)
-- **Server log:** `etc/odoo-server.log`
-- **Default admin password:** `admin_passwd = minhng.info` in [`etc/odoo.conf`](etc/odoo.conf) — override at setup time with `--password`
-
-## Container Management
-
-| Action  | Command                 |
-|---------|-------------------------|
-| Run     | `docker-compose up -d`  |
-| Restart | `docker-compose restart`|
-| Stop    | `docker-compose down`   |
-
-## Live Chat
-
-The live-chat port (default **20020**) is exposed on the host. Behind a reverse proxy (e.g. nginx), forward `/longpolling/`:
-
-```nginx
-server {
-  # ...
-  location /longpolling/ {
-    proxy_pass http://0.0.0.0:20020/longpolling/;
-  }
-  # ...
-}
-```
-
-## Versions
-
-| Service     | Image        |
-|-------------|--------------|
-| Odoo        | `odoo:20`    |
-| PostgreSQL  | `postgres:18`|
-
-## Screenshots
-
-<p align="center">
-<img src="screenshots/odoo-20-welcome-screenshot.jpg" alt="Odoo 20 welcome screen" width="50%">
-</p>
-
-<p align="center">
-<img src="screenshots/odoo-20-apps-screenshot.jpg" alt="Odoo 20 apps grid" width="100%">
-</p>
-
-<p align="center">
-<img src="screenshots/odoo-20-discuss.jpg" alt="Odoo 20 discuss" width="100%">
-</p>
-
-<p align="center">
-<img src="screenshots/odoo-20-sales-screen.jpg" alt="Odoo 20 sales screen" width="100%">
-</p>
-
-<p align="center">
-<img src="screenshots/odoo-20-product-form.jpg" alt="Odoo 20 product form" width="100%">
-</p>
+</div>
 
 ---
 
-## ☕ Buy Me a Coffee
+## Contents
 
-If this saves you time, consider buying me a coffee.
+1. [Overview](#1-overview)
+2. [Requirements](#2-requirements)
+3. [Architecture](#3-architecture)
+4. [Quick Start](#4-quick-start)
+5. [Access and Initial Credentials](#5-access-and-initial-credentials)
+6. [Configuration](#6-configuration)
+7. [Multiple Instances](#7-multiple-instances)
+8. [Traefik / HTTPS](#8-traefik--https)
+9. [Container Management](#9-container-management)
+10. [Backups](#10-backups)
+11. [Linux Host Tuning and Permissions](#11-linux-host-tuning-and-permissions)
+12. [Troubleshooting](#12-troubleshooting)
+13. [Project Layout and Security](#13-project-layout-and-security)
+14. [References](#14-references)
 
-<a href="https://buymeacoffee.com/minhng.info" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+---
+
+## 1. Overview
+
+Run Odoo 20 and PostgreSQL 18 with Docker Compose. Use the standard setup for
+one instance, or `run.sh` to install separate instances on different ports.
+An optional Compose file connects Odoo to an existing Traefik network.
+
+| Component | Image | Host access | Persistent storage |
+|---|---|---|---|
+| Odoo | `odoo:20` | `10020` HTTP · `20020` live service | `odoo_data` volume |
+| PostgreSQL | `postgres:18` | Not published | `./postgresql` |
+
+## 2. Requirements
+
+- Docker Engine.
+- Docker Compose v2 (`docker compose`).
+- Ubuntu/Linux server; Windows users can use WSL 2 with Docker integration.
+
+## 3. Architecture
+
+```mermaid
+flowchart LR
+    U([User]) -->|HTTP :10020| O[Odoo 20]
+    U -->|Live service :20020| O
+    O -->|Private Docker network| D[(PostgreSQL 18)]
+    O --> F[(Odoo data volume)]
+    D --> P[(./postgresql)]
+```
+
+PostgreSQL is not published to the host. In Traefik mode, requests reach
+Odoo through the configured reverse proxy instead of host-published ports.
+
+## 4. Quick Start
+
+### 1 · Get the project
+
+```bash
+git clone https://github.com/abdalazeim/InstallingOdoo20-Docker-Deployment.git
+cd InstallingOdoo20-Docker-Deployment
+```
+
+### 2 · Set environment and file permissions
+
+```bash
+cp .env.example .env
+chmod 600 .env
+mkdir -p postgresql
+chmod 700 postgresql
+chmod +x entrypoint.sh
+```
+
+### 3 · Start
+
+```bash
+docker compose pull
+docker compose up -d
+docker compose ps
+```
+
+## 5. Access and Initial Credentials
+
+| Service | Address |
+|---|---|
+| Odoo web interface | **[http://localhost:10020](http://localhost:10020)** |
+| Live communication port | **[http://localhost:20020](http://localhost:20020)** |
+
+> Port `20020` is the live communication/WebSocket service, not a second Odoo
+> web interface. Open Odoo itself on port `10020`.
+
+| Credential | Initial value | Used for |
+|---|---|---|
+| Odoo master password | `Admin@20` | Odoo database-management operations |
+| PostgreSQL user | `odoo20` | Odoo-to-PostgreSQL connection |
+| PostgreSQL password | `odoo@20` | Odoo-to-PostgreSQL connection |
+| Initial PostgreSQL database | `postgre` | PostgreSQL image initialization |
+
+These are example credentials, **not production secrets**. Change them in
+`.env` before exposing the service publicly. The Odoo master password is
+different from the administrator login you create for an Odoo application
+database.
+
+## 6. Configuration
+
+Edit `.env`; do not commit it. The file is already excluded by `.gitignore`.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ODOO_IMAGE` | `odoo:20` | Odoo image |
+| `PG_IMAGE` | `postgres:18` | PostgreSQL image |
+| `POSTGRES_USER` | `odoo20` | PostgreSQL role |
+| `POSTGRES_PASSWORD` | `odoo@20` | PostgreSQL role password |
+| `POSTGRES_DB` | `postgre` | Initial database created by the image |
+| `ODOO_ADMIN_PASSWORD` | `Admin@20` | Odoo master password |
+| `ODOO_HTTP_PORT` | `10020` | Host port → Odoo `8069` |
+| `ODOO_CHAT_PORT` | `20020` | Host port → Odoo `8072` |
+| `ODOO_NETWORK` | `odoo20_internal` | Private Docker network |
+| `ODOO_DOMAIN` | Required for Traefik | Public hostname |
+| `DOCKER_PROXY_NETWORK` | `proxy` | Existing Traefik network |
+| `CERTSRESOLVER` | `letsencrypt` | Traefik certificate resolver |
+
+Example: use host ports `11020` and `21020`:
+
+```dotenv
+ODOO_HTTP_PORT=11020
+ODOO_CHAT_PORT=21020
+```
+
+Apply changes:
+
+```bash
+docker compose up -d
+```
+
+> **Existing database:** PostgreSQL initialization variables apply only when
+> the data directory is first initialized. Editing credentials in `.env`
+> does not change roles, passwords, or databases in existing data.
+
+Custom addons go in [`addons/`](addons/). Odoo settings are in
+[`etc/odoo.conf`](etc/odoo.conf); runtime secrets are rendered from the
+container environment and should not be added to that tracked file.
+
+## 7. Multiple Instances
+
+`run.sh` clones this repository into a **new directory**, writes that
+instance's `.env`, sets its ports and unique container/network names, and
+starts Docker Compose. It will not overwrite an existing destination.
+
+```mermaid
+flowchart TD
+    A([Start]) --> B{Destination exists?}
+    B -->|Yes| X[Stop · choose another name]
+    B -->|No| C{Git + Docker Compose available?}
+    C -->|No| Y[Install requirements]
+    C -->|Yes| D[Clone this repository]
+    D --> E[Create instance .env + data directory]
+    E --> F[Set ports and unique names]
+    F --> G[Start Odoo + PostgreSQL]
+    G --> H([Open the instance URL])
+```
+
+**Requirements:** Git, Docker Engine, Docker Compose v2, and permission to run
+Docker. Run from the repository root:
+
+```bash
+# Instance 1
+sudo bash run.sh --destination odoo-live --port 10020 --chat 20020
+
+# Instance 2
+sudo bash run.sh --destination odoo-test --port 11020 --chat 21020
+```
+
+| Instance | Destination | Odoo URL | Live service |
+|---|---|---|---|
+| `odoo-live` | `odoo-live/` | [http://localhost:10020](http://localhost:10020) | `20020` |
+| `odoo-test` | `odoo-test/` | [http://localhost:11020](http://localhost:11020) | `21020` |
+
+The same commands can download the installer from this repository's `main`
+branch. Review scripts before piping a remote download to a shell:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/abdalazeim/InstallingOdoo20-Docker-Deployment/main/run.sh \
+  | bash -s -- --destination odoo-live --port 10020 --chat 20020
+
+curl -fsSL https://raw.githubusercontent.com/abdalazeim/InstallingOdoo20-Docker-Deployment/main/run.sh \
+  | bash -s -- --destination odoo-test --port 11020 --chat 21020
+```
+
+Each instance has its own PostgreSQL directory and Odoo data volume. Manage
+it from its destination directory:
+
+```bash
+cd odoo-live
+docker compose ps
+docker compose logs -f
+```
+
+## 8. Traefik / HTTPS
+
+Use [`docker-compose.traefik.yml`](docker-compose.traefik.yml) only when
+Traefik is already running and its external Docker network exists.
+
+```dotenv
+ODOO_DOMAIN=odoo.example.com
+DOCKER_PROXY_NETWORK=proxy
+CERTSRESOLVER=letsencrypt
+```
+
+```bash
+# Only if the shared network has not already been created
+docker network create proxy
+
+docker compose -f docker-compose.traefik.yml up -d
+```
+
+Configure DNS and Traefik's entrypoint/certificate resolver for your server,
+then open `https://odoo.example.com`. Do not run standard and Traefik modes
+simultaneously for the same instance.
+
+## 9. Container Management
+
+Run from the deployment directory:
+
+| Action | Command |
+|---|---|
+| Start | `docker compose up -d` |
+| Status | `docker compose ps` |
+| Follow all logs | `docker compose logs -f` |
+| Odoo logs | `docker compose logs -f odoo20` |
+| PostgreSQL logs | `docker compose logs -f db` |
+| Restart | `docker compose restart` |
+| Stop; keep containers and data | `docker compose stop` |
+| Stop; keep data | `docker compose down` |
+
+Both services use `restart: always`: Docker restarts them after a failure or
+host restart. `docker compose down` preserves data. Avoid `docker compose down
+-v` unless you intend to delete the named Odoo data volume. Never delete
+`postgresql/` unless you intend to remove the PostgreSQL data.
+
+## 10. Backups
+
+The PostgreSQL bind mount is `postgresql/`; Odoo attachments and files are
+stored in the `odoo_data` named volume. Back up both:
+
+Run these commands from the default single-instance project. For an instance
+created by `run.sh`, replace `odoo20-db` and `odoo20` with the container names
+shown by `docker compose ps`.
+
+```bash
+mkdir -p backups
+docker exec odoo20-db pg_dumpall -U odoo20 > backups/postgresql-all.sql
+docker exec odoo20 tar -C /var/lib/odoo -czf /tmp/odoo-data.tar.gz .
+docker cp odoo20:/tmp/odoo-data.tar.gz backups/odoo-data.tar.gz
+docker exec odoo20 rm -f /tmp/odoo-data.tar.gz
+```
+
+Protect backup files: SQL dumps may contain credentials and business data.
+Keep an additional copy outside the server and test restoration regularly.
+
+## 11. Linux Host Tuning and Permissions
+
+### File permissions
+
+Do **not** use `chmod -R 777`: it grants every local user read/write/execute
+access. Use restrictive permissions:
+
+```bash
+chmod 600 .env
+chmod 700 postgresql
+chmod +x entrypoint.sh
+```
+
+If a bind mount reports a permission error, inspect the specific path and
+container logs before changing ownership:
+
+```bash
+docker compose logs --tail=100
+ls -ld addons etc postgresql
+```
+
+Change permissions only on the affected directory. Do not make database data
+or password files world-writable.
+
+### Optional · Increase Linux inotify watches
+
+This host setting may help when running many instances and the system reports
+that its file-watch limit is exhausted. It is not normally required:
+
+```bash
+if grep -qF "fs.inotify.max_user_watches" /etc/sysctl.conf; then
+  grep -F "fs.inotify.max_user_watches" /etc/sysctl.conf
+else
+  echo "fs.inotify.max_user_watches = 524288" | sudo tee -a /etc/sysctl.conf
+fi
+
+sudo sysctl -p
+```
+
+## 12. Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| Port already in use | Change `ODOO_HTTP_PORT` / `ODOO_CHAT_PORT` in `.env`; run `docker compose up -d` |
+| Odoo cannot connect to PostgreSQL | `docker compose logs db odoo20` |
+| PostgreSQL readiness | `docker compose exec db pg_isready -U odoo20 -d postgre` |
+| Odoo configuration error | `docker compose logs --tail=100 odoo20` |
+| Credentials changed but old ones still work | Existing PostgreSQL data is not re-initialized from `.env` |
+| Traefik route unavailable | Check DNS, external network, resolver, entrypoint, and `ODOO_DOMAIN` |
+
+```mermaid
+flowchart LR
+    A([Odoo unavailable]) --> B{Containers running?}
+    B -->|No| C[Check docker compose ps]
+    B -->|Yes| D{Database ready?}
+    D -->|No| E[Check PostgreSQL logs and credentials]
+    D -->|Yes| F{Correct host port?}
+    F -->|No| G[Check .env port mapping]
+    F -->|Yes| H[Check Odoo logs and configuration]
+```
+
+## 13. Project Layout and Security
+
+### Project layout
+
+```text
+InstallingOdoo20-Docker-Deployment/
+├── addons/                       # Custom Odoo addons
+├── etc/
+│   ├── odoo.conf                 # Odoo configuration template
+│   └── requirements.txt          # Optional Python dependencies
+├── postgresql/                   # PostgreSQL data (persistent; not committed)
+├── .env.example                  # Environment template
+├── docker-compose.yml            # Direct host-port deployment
+├── docker-compose.traefik.yml    # Optional Traefik deployment
+├── entrypoint.sh                 # Runtime config + PostgreSQL wait
+├── run.sh                        # Optional multi-instance installer
+└── README.md
+```
+
+### Security checklist
+
+- [ ] Replace the example Odoo and PostgreSQL passwords.
+- [ ] Keep `.env`, database data, and backups out of Git.
+- [ ] Do not publish PostgreSQL's port.
+- [ ] Use HTTPS through a trusted reverse proxy for public access.
+- [ ] Keep Docker Engine and container images updated.
+
+## 14. References
+
+- [Odoo 20 documentation](https://www.odoo.com/documentation/20.0/)
+- [Docker Compose documentation](https://docs.docker.com/compose/)
+- [GitHub repository](https://github.com/abdalazeim/InstallingOdoo20-Docker-Deployment)
+- [Report an issue](https://github.com/abdalazeim/InstallingOdoo20-Docker-Deployment/issues)

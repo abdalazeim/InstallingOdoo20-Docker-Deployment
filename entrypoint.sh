@@ -1,67 +1,65 @@
-#!/bin/bash
+#!/bin/sh
+# ==============================================================================
+# Odoo 20 Private Repository - Generic Entrypoint Wrapper
+#
+# يستمد الأفكار من Odoo-MultiVersion-Deployment مع تحسينات للأمان والتوافق.
+# ==============================================================================
+set -eu
+umask 077
 
-set -e
+: "${HOST:=db}"
+: "${PORT:=5432}"
+: "${USER:=odoo}"
+: "${PASSWORD:=}"
+: "${ODOO_ADMIN_PASSWORD:=odoo20}"
 
-if [ -v PASSWORD_FILE ]; then
-    PASSWORD="$(< $PASSWORD_FILE)"
+# تثبيت متطلبات بايثون الإضافية إذا أضافها المشغل.
+if [ -f /etc/odoo/requirements.txt ]; then
+    pip3 install --no-cache-dir -r /etc/odoo/requirements.txt
 fi
 
-# set the postgres database host, port, user and password according to the environment
-# and pass them as arguments to the odoo process if not present in the config file
-: ${HOST:=${DB_PORT_5432_TCP_ADDR:='db'}}
-: ${PORT:=${DB_PORT_5432_TCP_PORT:=5432}}
-: ${USER:=${DB_ENV_POSTGRES_USER:=${POSTGRES_USER:='odoo'}}}
-: ${PASSWORD:=${DB_ENV_POSTGRES_PASSWORD:=${POSTGRES_PASSWORD:='odoo20@2026'}}}
+# Render the environment-backed settings without modifying the mounted config.
+python3 - <<'PY'
+import os
+from pathlib import Path
 
-# install python packages
-# pip3 install pip --upgrade                # may cause errors
-pip3 install -r /etc/odoo/requirements.txt
-
-# Install logrotate if not already installed
-if ! dpkg -l | grep -q logrotate; then
-    apt-get update && apt-get install -y logrotate
-fi
-
-# Copy logrotate config
-cp /etc/odoo/logrotate /etc/logrotate.d/odoo
-
-# Start cron daemon (required for logrotate)
-cron
-
-DB_ARGS=()
-function check_config() {
-    param="$1"
-    value="$2"
-    pg_var="${3:-}"
-    if [ -n "$pg_var" ] && [[ -v "$pg_var" ]]; then
-        return
-    fi
-    if ! grep -q -E "^\s*\b${param}\b\s*=" "$ODOO_RC" ; then
-        DB_ARGS+=("--${param}")
-        DB_ARGS+=("${value}")
-    fi;
+source = Path("/etc/odoo/odoo.conf").read_text(encoding="utf-8")
+values = {
+    "${ODOO_ADMIN_PASSWORD}": os.environ["ODOO_ADMIN_PASSWORD"],
+    "${ODOO_DB_USER}": os.environ["USER"],
+    "${ODOO_DB_PASSWORD}": os.environ["PASSWORD"],
 }
-check_config "db_host" "$HOST" "PGHOST"
-check_config "db_port" "$PORT" "PGPORT"
-check_config "db_user" "$USER" "PGUSER"
-check_config "db_password" "$PASSWORD" "PGPASSWORD"
+for placeholder, value in values.items():
+    if "\n" in value or "\r" in value:
+        raise SystemExit(f"Invalid newline in value for {placeholder}")
+    source = source.replace(placeholder, value)
 
-case "$1" in
-    -- | odoo)
-        shift
-        if [[ "$1" == "scaffold" ]] ; then
-            exec odoo "$@"
-        else
-            wait-for-psql.py ${DB_ARGS[@]} --timeout=30
-            exec odoo "$@" "${DB_ARGS[@]}"
-        fi
-        ;;
-    -*)
-        wait-for-psql.py ${DB_ARGS[@]} --timeout=30
-        exec odoo "$@" "${DB_ARGS[@]}"
-        ;;
-    *)
-        exec "$@"
-esac
+if any(placeholder in source for placeholder in values):
+    raise SystemExit("Unresolved environment variable in /etc/odoo/odoo.conf")
 
-exit 1
+config = Path("/tmp/odoo.conf")
+config.write_text(source, encoding="utf-8")
+config.chmod(0o600)
+PY
+
+# الانتظار حتى تقبل PostgreSQL الاتصالات قبل تشغيل أودو.
+if [ -n "${PASSWORD}" ]; then
+    python3 - <<'PY'
+import os
+import socket
+import time
+
+host = os.environ.get("HOST", "db")
+port = int(os.environ.get("PORT", "5432"))
+for _ in range(60):
+    try:
+        with socket.create_connection((host, port), timeout=2):
+            break
+    except OSError:
+        time.sleep(1)
+else:
+    raise SystemExit(f"Timed out waiting for PostgreSQL at {host}:{port}")
+PY
+fi
+
+exec odoo "$@"
