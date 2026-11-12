@@ -4,8 +4,6 @@
 # ينضم إلى شبكة "proxy" المشتركة ويُوجّه عبر ترافيك على HTTPS.
 # تبقى قاعدة بيانات PostgreSQL على الشبكة الداخلية فقط.
 
-version: '3.8'
-
 services:
   db:
     container_name: ${ODOO_DB_CONTAINER_NAME:-odoo20-db}
@@ -16,17 +14,28 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-odoo20}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-odoo@20}
       - POSTGRES_DB=${POSTGRES_DB:-postgre}
+      # PostgreSQL 18 stores data in a major-version directory; the entrypoint
+      # only initialises an empty PGDATA, so the legacy /var/lib/postgresql/data
+      # mount point is not supported.
+      - PGDATA=/var/lib/postgresql/18/docker
     volumes:
-      - ./postgresql:/var/lib/postgresql/data
+      - ./postgresql:/var/lib/postgresql
     networks:
       - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-odoo20} -d ${POSTGRES_DB:-postgre}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
 
   odoo20:
     container_name: ${ODOO_CONTAINER_NAME:-odoo20}
     image: ${ODOO_IMAGE:-odoo:20}
     user: root
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     restart: always
     tty: true
     command: ["--config=/tmp/odoo.conf"]
