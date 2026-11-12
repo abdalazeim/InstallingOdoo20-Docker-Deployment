@@ -105,10 +105,14 @@ cd InstallingOdoo20-Docker-Deployment
 ```bash
 cp .env.example .env
 chmod 600 .env
-mkdir -p postgresql
-chmod 700 postgresql
+sudo mkdir -p postgresql
+sudo chmod 700 postgresql
 chmod +x entrypoint.sh
 ```
+
+> أنشئ `postgresql/` باستخدام `sudo`. تعمل حاوية PostgreSQL بالمستخدم `root`
+> وتعيد كتابة ملكية المجلد؛ إذا كان المجلد مملوكًا لمستخدم تسجيل الدخول فقد
+> تفشل الحاوية بـ `Permission denied`.
 
 عدّل ملف `.env` وضع كلمات مرور قوية بدل القيم التجريبية قبل النشر العام.
 

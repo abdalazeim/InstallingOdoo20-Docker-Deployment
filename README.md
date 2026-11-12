@@ -78,10 +78,14 @@ cd InstallingOdoo20-Docker-Deployment
 ```bash
 cp .env.example .env
 chmod 600 .env
-mkdir -p postgresql
-chmod 700 postgresql
+sudo mkdir -p postgresql
+sudo chmod 700 postgresql
 chmod +x entrypoint.sh
 ```
+
+> Create `postgresql/` with `sudo`. The PostgreSQL container runs as `root` and
+> rewrites the directory ownership; a directory owned by your login user can
+> make the container fail with `Permission denied`.
 
 ### 3 · Start
 
@@ -279,7 +283,7 @@ access. Use restrictive permissions:
 
 ```bash
 chmod 600 .env
-chmod 700 postgresql
+sudo chmod 700 postgresql
 chmod +x entrypoint.sh
 ```
 
