@@ -311,6 +311,7 @@ docker compose -f docker-compose.traefik.yml up -d
 | فحص جاهزية PostgreSQL | نفّذ `docker compose exec db pg_isready -U odoo20 -d postgre` |
 | خطأ في إعداد Odoo | راجع `docker compose logs --tail=100 odoo20` |
 | كلمات المرور تغيّرت دون أثر | بيانات PostgreSQL الحالية لا تُعاد تهيئتها من `.env` |
+| `PostgreSQL data in /var/lib/postgresql/data (unused mount/volume)` أو `mkdir: cannot create directory '/var/lib/postgresql': Permission denied` | صور PostgreSQL 18 تخزّن البيانات في مجلد يحمل رقم الإصدار. يجب أن يكون التركيب `./postgresql:/var/lib/postgresql` مع `PGDATA=/var/lib/postgresql/18/docker`، وأن تعمل خدمة `db` بالمستخدم `root` ليصحح entrypoint الملكية |
 | Traefik لا يوجّه الطلب | تحقق من DNS والشبكة الخارجية و`ODOO_DOMAIN` |
 
 ```mermaid

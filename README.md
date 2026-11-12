@@ -318,6 +318,7 @@ sudo sysctl -p
 | PostgreSQL readiness | `docker compose exec db pg_isready -U odoo20 -d postgre` |
 | Odoo configuration error | `docker compose logs --tail=100 odoo20` |
 | Credentials changed but old ones still work | Existing PostgreSQL data is not re-initialized from `.env` |
+| `PostgreSQL data in /var/lib/postgresql/data (unused mount/volume)` or `mkdir: cannot create directory '/var/lib/postgresql': Permission denied` | PostgreSQL 18 images store data in a major-version directory. The mount must be `./postgresql:/var/lib/postgresql` with `PGDATA=/var/lib/postgresql/18/docker`, and the `db` service must run as `root` so the entrypoint can fix ownership |
 | Traefik route unavailable | Check DNS, external network, resolver, entrypoint, and `ODOO_DOMAIN` |
 
 ```mermaid
