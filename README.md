@@ -321,6 +321,7 @@ sudo sysctl -p
 | Odoo cannot connect to PostgreSQL | `docker compose logs db odoo20` |
 | PostgreSQL readiness | `docker compose exec db pg_isready -U odoo20 -d postgre` |
 | Odoo configuration error | `docker compose logs --tail=100 odoo20` |
+| `curl` from the host resets the connection while Odoo logs `HTTP service running on 127.0.0.1:8069` | Odoo binds to loopback by default. `etc/odoo.conf` sets `http_interface = 0.0.0.0` so the published port is reachable |
 | Credentials changed but old ones still work | Existing PostgreSQL data is not re-initialized from `.env` |
 | `PostgreSQL data in /var/lib/postgresql/data (unused mount/volume)` or `mkdir: cannot create directory '/var/lib/postgresql': Permission denied` | PostgreSQL 18 images store data in a major-version directory. The mount must be `./postgresql:/var/lib/postgresql` with `PGDATA=/var/lib/postgresql/18/docker`, and the `db` service must run as `root` so the entrypoint can fix ownership |
 | Traefik route unavailable | Check DNS, external network, resolver, entrypoint, and `ODOO_DOMAIN` |
