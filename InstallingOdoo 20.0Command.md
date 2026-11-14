@@ -94,28 +94,41 @@ docker compose ps
 ### 4. تهيئة قاعدة بيانات Odoo
 
 قاعدة `postgre` التي تنشئها صورة PostgreSQL **غير مهيأة** لـ Odoo، لذا
-صفحة الدخول تعيد `500` حتى تُهيّأ قاعدة Odoo:
+صفحة الدخول تعيد `500` (أو تحوّل إلى `/web/database/selector`) حتى تُهيّأ قاعدة
+Odoo. أوقف Odoo لتحرير المنفذ، ثم هيّئ القاعدة، ثم أعد التشغيل:
 
 ```bash
-docker compose exec -T odoo20 odoo -c /tmp/odoo.conf -d odoo20 -i base \
-  --stop-after-init --without-demo=all
-docker compose restart odoo20
+docker compose stop odoo20
+docker compose run --rm --no-deps odoo20 -c /tmp/odoo.conf -d odoo20 \
+  -i base --stop-after-init
+docker compose start odoo20
 ```
+
+لا تُضِف `--entrypoint odoo`؛ فـ entrypoint هو من يولّد `/tmp/odoo.conf`،
+وتجاوزه يعطي `config file '/tmp/odoo.conf' ... doesn't exist`. ولا تستخدم
+`--without-demo=all`؛ فـ Odoo 20 يرفضها.
 
 ### 5. التحقق
 
 ```bash
 curl -I http://localhost:10020/odoo
-# المتوقع: HTTP/1.1 303 SEE OTHER  →  location: /odoo/odoo
 ```
 
-ثم افتح `http://<IP>:10020/odoo` في المتصفح.
+مع ضبط `ODOO_DB_NAME` (بالأسفل) يكون الرد إعادة توجيه إلى صفحة الدخول أو
+`200`، وليس `/web/database/selector` أبدًا. ثم افتح
+`http://<IP>:10020/odoo` في المتصفح.
 
 > **بادئة Odoo 20:** انتقلت واجهة الويب من `/web` إلى `/odoo`.
 > `http://الخادم:10020/` يعيد التوجيه إلى `/odoo`، و`/odoo/discuss` و
 > `/odoo/sales` هي نقاط الدخول الطبيعية. المسارات `/web/login` و
 > `/web/database/manager` و`/web/database/selector` ما زالت موجودة كمسارات
 > خلفية قديمة. هذا سلوك Odoo المتعمد وليس خللًا في التثبيت.
+
+> **`ODOO_DB_NAME` لازمة لجلسة متصفح عاملة.** مع `list_db = False` لا يستطيع
+> Odoo عرض منتقي قواعد البيانات، لذا غياب `ODOO_DB_NAME` يُبقي `/odoo` عند
+> `303 -> /web/database/selector`. اضبطه على اسم القاعدة الذي أُنشئ في الخطوة 4
+> (الافتراضي `odoo20`) ثم أعد إنشاء الحاوية:
+> `docker compose up -d --force-recreate odoo20`.
 
 ---
 
@@ -168,6 +181,7 @@ docker compose logs -f
 | `POSTGRES_PASSWORD` | `odoo@20` | كلمة مرور قاعدة البيانات |
 | `POSTGRES_DB` | `postgre` | قاعدة تهيئة PostgreSQL فقط |
 | `ODOO_ADMIN_PASSWORD` | `Admin@20` | كلمة مرور Odoo الرئيسية |
+| `ODOO_DB_NAME` | `odoo20` | قاعدة Odoo التي تخدمها هذه النسخة (`db_name`)؛ اتركها فارغة لوضع منتقي القواعد |
 | `ODOO_HTTP_PORT` | `10020` | منفذ المضيف لـ Odoo |
 | `ODOO_CHAT_PORT` | `20020` | منفذ المضيف للمحادثة |
 | `ODOO_NETWORK` | `odoo20_internal` | الشبكة الداخلية |
@@ -259,12 +273,16 @@ docker compose -f docker-compose.traefik.yml up -d
 | فحص جاهزية PostgreSQL | `docker compose exec db pg_isready -U odoo20 -d postgre` |
 | `curl` يعيد الاتصال والسجل يقول `HTTP service running on 127.0.0.1:8069` | أضف `http_interface = 0.0.0.0` إلى `etc/odoo.conf` ثم أعد التشغيل |
 | `500` على صفحة الدخول مع `Database <db> not initialized` | نفّذ `odoo -c /tmp/odoo.conf -d <db> -i base --stop-after-init` |
+| `303 -> /web/database/selector` على كل الروابط | `ODOO_DB_NAME` فارغ أو لا يطابق قاعدة مهيأة. اضبطه في `.env` ثم `docker compose up -d --force-recreate odoo20` |
+| `exec: "/entrypoint.sh": permission denied` | أعد إنشاء الحاوية؛ ملفات compose تشغّل entrypoint عبر `["/bin/sh", "/entrypoint.sh"]` |
+| `Unknown command 'odoo'` من `docker compose run` | لا تُمرّر أمرًا يبدأ بـ `odoo`؛ الـ entrypoint يضيفه تلقائيًا |
 | `/` يعيد التوجيه و`/odoo/...` يعمل | سلوك Odoo 20 الطبيعي: انتقلت الواجهة من `/web` إلى `/odoo`. افتح `http://الخادم:10020/odoo` |
 | `http://الخادم:20020/` لا يعرض شيئًا | المنفذ `20020` لخدمة WebSocket فقط وليس واجهة ويب. استخدم `10020` |
 | `mkdir: cannot create directory '/var/lib/postgresql'` | احذف `postgresql/` بـ `sudo` وأنشئه بـ `sudo` (أو استخدم الحجم المُدار) |
 | `PostgreSQL data in /var/lib/postgresql/data (unused mount/volume)` | استخدم `PGDATA=/var/lib/postgresql/18/docker` والتركيب على `/var/lib/postgresql` |
 | `Address already in use` أثناء التهيئة | الحاوية تعمل بالفعل؛ لا تشغّل `odoo` يدويًا داخلها. أعد التشغيل فقط |
-| خطأ عميل `odoo.loader.modules.get(...) is undefined` | امسح ذاكرة أصول المتصفح (hard reload)، ثم أعد بناء الأصول: `docker compose exec -T odoo20 odoo -c /tmp/odoo.conf -d <db> --stop-after-init` |
+| خطأ عميل `odoo.loader.modules.get(...) is undefined` | امسح ذاكرة أصول المتصفح (hard reload)، ثم أعد بناء الأصول: `docker compose run --rm --no-deps odoo20 -c /tmp/odoo.conf -d <db> --stop-after-init` |
+| `sed: couldn't open temporary file ... Permission denied` | ملفات المجلد مملوكة لـ root. نفّذ `sudo chown -R "$USER":"$USER" <المجلد>` ثم عدّل بدون `sudo` |
 | كلمات المرور تغيّرت بلا أثر | بيانات PostgreSQL الحالية لا تُعاد تهيئتها من `.env` |
 
 ---

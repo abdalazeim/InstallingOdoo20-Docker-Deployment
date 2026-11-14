@@ -102,28 +102,44 @@ docker compose ps
 ### 4 · Initialise the Odoo database
 
 The `postgre` database created by the PostgreSQL image is **not** an Odoo
-database. Until an Odoo database exists, the login page returns `500`:
+database. Until an Odoo database exists, every URL returns `500` (or redirects to
+`/web/database/selector`).
+
+Free the HTTP port, initialise the database, then start Odoo again:
 
 ```bash
-docker compose exec -T odoo20 odoo -c /tmp/odoo.conf -d odoo20 -i base \
-  --stop-after-init --without-demo=all
-docker compose restart odoo20
+docker compose stop odoo20
+docker compose run --rm --no-deps odoo20 -c /tmp/odoo.conf -d odoo20 \
+  -i base --stop-after-init
+docker compose start odoo20
 ```
+
+Do **not** add `--entrypoint odoo`: the entrypoint renders `/tmp/odoo.conf`, and
+skipping it makes Odoo fail with `config file '/tmp/odoo.conf' ... doesn't
+exist`. Do not use `--without-demo=all` either; Odoo 20 rejects it with
+`invalid boolean value: 'all', assume True`.
 
 ### 5 · Verify
 
 ```bash
 curl -I http://localhost:10020/odoo
-# Expected: HTTP/1.1 303 SEE OTHER -> location: /odoo/odoo
 ```
 
-Then open `http://<server-ip>:10020/odoo`.
+With `ODOO_DB_NAME` set (see below) the answer is a redirect to the login page
+or `200`, never `/web/database/selector`. Then open
+`http://<server-ip>:10020/odoo`.
 
 > **Odoo 20 URL prefix:** the web client moved from `/web` to `/odoo`.
 > `http://server:10020/` redirects to `/odoo`, and `/odoo/discuss`,
 > `/odoo/sales` etc. are the normal entry points. `/web/login`,
 > `/web/database/manager` and `/web/database/selector` still exist as legacy
 > backend routes. This is intentional Odoo behaviour, not a deployment fault.
+
+> **`ODOO_DB_NAME` is required for a usable browser session.** With
+> `list_db = False`, Odoo cannot show the database selector, so an unset
+> `ODOO_DB_NAME` leaves `/odoo` stuck at `303 -> /web/database/selector`. Set it
+> to the database name created in step 4 (`odoo20` by default) and recreate the
+> container with `docker compose up -d --force-recreate odoo20`.
 
 ## 5. Access and Initial Credentials
 
@@ -158,6 +174,7 @@ Edit `.env`; do not commit it. The file is already excluded by `.gitignore`.
 | `POSTGRES_PASSWORD` | `odoo@20` | PostgreSQL role password |
 | `POSTGRES_DB` | `postgre` | PostgreSQL bootstrap database only |
 | `ODOO_ADMIN_PASSWORD` | `Admin@20` | Odoo master password |
+| `ODOO_DB_NAME` | `odoo20` | Odoo database this instance serves (`db_name`); leave empty for selector mode |
 | `ODOO_HTTP_PORT` | `10020` | Host port → Odoo `8069` |
 | `ODOO_CHAT_PORT` | `20020` | Host port → Odoo `8072` |
 | `ODOO_NETWORK` | `odoo20_internal` | Private Docker network |
@@ -361,6 +378,9 @@ sudo sysctl -p
 | PostgreSQL readiness | `docker compose exec db pg_isready -U odoo20 -d postgre` |
 | Host `curl` resets while Odoo logs `HTTP service running on 127.0.0.1:8069` | `etc/odoo.conf` must set `http_interface = 0.0.0.0` |
 | `500` on the login page with `Database <db> not initialized` | Run `odoo -c /tmp/odoo.conf -d <db> -i base --stop-after-init` |
+| `303 -> /web/database/selector` on every URL | `ODOO_DB_NAME` is empty or does not match an initialised database. Set it in `.env`, then `docker compose up -d --force-recreate odoo20` |
+| `exec: "/entrypoint.sh": permission denied` | Recreate the stack; the compose files run the entrypoint as `["/bin/sh", "/entrypoint.sh"]` |
+| `Unknown command 'odoo'` from `docker compose run` | Do not pass a command starting with `odoo`; the entrypoint already prepends it |
 | `/` returns a redirect and `/odoo/...` works | Normal Odoo 20 behaviour: the web client prefix changed from `/web` to `/odoo`. Open `http://server:10020/odoo` |
 | `http://server:20020/` shows nothing | Port `20020` is the WebSocket/live service only, not a web UI. Use port `10020` for Odoo |
 | Odoo works on one instance's port but not another's | Each `run.sh` instance has its own ports, volumes, and database. Initialise each instance's Odoo database (`--db` or `odoo -i base`) before use |
