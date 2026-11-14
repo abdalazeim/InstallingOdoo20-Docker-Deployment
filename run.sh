@@ -184,7 +184,7 @@ fi
 
 printf 'Waiting for Odoo HTTP service...\n'
 for _ in $(seq 1 90); do
-    if curl -fsS -o /dev/null "http://localhost:${ODOO_PORT}/web/login" 2>/dev/null; then
+    if curl -fsS -o /dev/null "http://localhost:${ODOO_PORT}/odoo" 2>/dev/null; then
         break
     fi
     sleep 2
@@ -193,20 +193,33 @@ done
 if [[ -n "$SKIP_INIT" ]]; then
     printf '\nStarted without database initialisation (--skip-init).\n'
 else
+    printf 'Stopping Odoo to free the HTTP port for initialisation...\n'
+    compose stop odoo20 >/dev/null
+
     printf 'Initialising Odoo database "%s"...\n' "$DB_NAME"
-    if compose exec -T odoo20 odoo -c /tmp/odoo.conf -d "$DB_NAME" -i base \
-        --stop-after-init --without-demo=all; then
-        compose restart odoo20 >/dev/null
+    if compose run --rm --no-deps \
+        odoo20 -c /tmp/odoo.conf -d "$DB_NAME" -i base --stop-after-init; then
         printf 'Database "%s" is ready.\n' "$DB_NAME"
     else
         printf 'Warning: database initialisation failed. Create it from the UI instead.\n' >&2
     fi
+
+    printf 'Starting Odoo...\n'
+    compose start odoo20 >/dev/null
+
+    printf 'Waiting for Odoo HTTP service...\n'
+    for _ in $(seq 1 90); do
+        if curl -fsS -o /dev/null "http://localhost:${ODOO_PORT}/odoo" 2>/dev/null; then
+            break
+        fi
+        sleep 2
+    done
 fi
 
 printf '\nOdoo deployment is ready.\n'
 printf 'Project:   %s\n' "$PROJECT_DIR"
-printf 'Odoo:      http://localhost:%s\n' "$ODOO_PORT"
+printf 'Odoo:      http://localhost:%s/odoo\n' "$ODOO_PORT"
 printf 'Database:  %s\n' "$DB_NAME"
-printf 'Live port: %s\n' "$CHAT_PORT"
+printf 'Live port: %s (WebSocket only, not a web UI)\n' "$CHAT_PORT"
 printf 'Status:    docker compose -f %s/docker-compose.yml ps\n' "$PROJECT_DIR"
 printf 'Logs:      docker compose -f %s/docker-compose.yml logs -f\n' "$PROJECT_DIR"
