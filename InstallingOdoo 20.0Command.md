@@ -2,66 +2,42 @@
 
 # دليل تثبيت Odoo 20 باستخدام Docker Compose
 
-**Odoo 20 · PostgreSQL 18 · Docker Compose · دعم Traefik اختياري**
+**Odoo 20 · PostgreSQL 18 · Docker Compose · Traefik اختياري**
 
-دليل عملي لتثبيت Odoo 20 وإدارته على Ubuntu/Linux، مع خيار تشغيل أكثر من
-نسخة على الخادم نفسه.
+دليل عملي لتثبيت Odoo 20 وتشغيل أكثر من نسخة على الخادم نفسه، مبني على
+تجربة تثبيت فعلية على Ubuntu.
 
-[ابدأ التثبيت](#-التثبيت-السريع) · [تشغيل نسخ متعددة](#-تشغيل-أكثر-من-نسخة) ·
-[إدارة الحاويات](#-إدارة-الحاويات) · [استكشاف الأخطاء](#-استكشاف-الأخطاء)
+[التثبيت السريع](#-التثبيت-السريع) · [أكثر من نسخة](#-تشغيل-أكثر-من-نسخة) ·
+[الإعدادات](#️-الإعدادات) · [إدارة الحاويات](#-إدارة-الحاويات) ·
+[النسخ الاحتياطي](#-النسخ-الاحتياطي) · [استكشاف الأخطاء](#-استكشاف-الأخطاء)
 
 </div>
 
 ---
 
-## 📑 المحتويات
+## ‏🔎 نظرة عامة
 
-1. [نظرة عامة](#-نظرة-عامة)
-2. [المتطلبات](#-المتطلبات)
-3. [معلومات الدخول والمنافذ](#-معلومات-الدخول-والمنافذ)
-4. [التثبيت السريع](#-التثبيت-السريع)
-5. [تشغيل أكثر من نسخة](#-تشغيل-أكثر-من-نسخة)
-6. [الإعدادات](#️-الإعدادات)
-7. [إدارة الحاويات](#-إدارة-الحاويات)
-8. [النسخ الاحتياطي](#-النسخ-الاحتياطي)
-9. [الصلاحيات وإعداد Linux](#️-الصلاحيات-وإعداد-linux)
-10. [Traefik وHTTPS](#-traefik-وhttps-اختياري)
-11. [استكشاف الأخطاء](#-استكشاف-الأخطاء)
-12. [هيكل المشروع والأمان](#-هيكل-المشروع-والأمان)
-13. [روابط مفيدة](#-روابط-مفيدة)
+يشغّل المشروع Odoo 20 و PostgreSQL 18 داخل حاويات Docker. قاعدة البيانات على
+شبكة داخلية معزولة ولا يُنشر منفذها على المضيف.
 
----
-
-## 🔎 نظرة عامة
-
-يشغّل المشروع Odoo 20 وقاعدة PostgreSQL 18 داخل حاويات Docker. تبقى قاعدة
-البيانات على شبكة داخلية ولا يُنشر منفذها على الإنترنت.
-
-```mermaid
-flowchart LR
-    U([المستخدم]) -->|HTTP :10020| O[Odoo 20]
-    U -->|خدمة المحادثة :20020| O
-    O -->|شبكة Docker داخلية| D[(PostgreSQL 18)]
-    D --> P[(مجلد postgresql)]
-    O --> F[(حجم بيانات Odoo)]
-```
-
-| الخدمة | الصورة | منافذ المضيف الافتراضية | حفظ البيانات |
+| الخدمة | الصورة | منفذ المضيف | تخزين البيانات |
 |---|---|---|---|
-| Odoo | `odoo:20` | `10020` للويب، `20020` للمحادثة | حجم Docker باسم `odoo_data` |
-| PostgreSQL | `postgres:18` | غير مكشوف للمضيف | المجلد `postgresql/` |
+| Odoo | `odoo:20` | `10020` ويب · `20020` محادثة | حجم `odoo_data` |
+| PostgreSQL | `postgres:18` | غير منشور | حجم `odoo_pgdata` |
+
+> **PostgreSQL 18** يغيّر مكان البيانات إلى `/var/lib/postgresql/18/docker`.
+> لذلك لا يعمل التركيب القديم على `/var/lib/postgresql/data`. المشروع يستخدم
+> حجمًا مُدارًا من Docker (`odoo_pgdata`) لتفادي مشاكل ملكية المجلدات على
+> المضيف نهائيًا.
 
 ---
 
-## ✅ المتطلبات
+## ‏✅ المتطلبات
 
 - Ubuntu 22.04/24.04 أو توزيعة Linux مناسبة.
-- Docker Engine.
-- Docker Compose v2، ويُستخدم بالأمر `docker compose`.
-- اتصال بالإنترنت عند تنزيل الصور أول مرة.
-- توفر المنفذين `10020` و`20020`، أو اختيار منافذ بديلة.
-
-تحقق من توفر الأدوات:
+- Docker Engine و Docker Compose v2 (الأمر `docker compose`).
+- صلاحية تشغيل Docker (عضوية مجموعة `docker` أو `sudo`).
+- منافذ `10020` و`20020` متاحة، أو منافذ بديلة.
 
 ```bash
 docker --version
@@ -69,27 +45,26 @@ docker compose version
 docker run --rm hello-world
 ```
 
-> على Windows، نفّذ الأوامر عبر WSL 2 بعد تفعيل تكامل Docker مع WSL.
-
 ---
 
-## 🔐 معلومات الدخول والمنافذ
+## ‏🔐 معلومات الدخول والمنافذ
 
 | البيان | القيمة الافتراضية | الاستخدام |
 |---|---|---|
-| كلمة مرور Odoo الرئيسية | `Admin@20` | إدارة قواعد البيانات من واجهة Odoo |
+| كلمة مرور Odoo الرئيسية | `Admin@20` | عمليات إدارة قواعد البيانات |
 | مستخدم PostgreSQL | `odoo20` | اتصال Odoo بقاعدة البيانات |
 | كلمة مرور PostgreSQL | `odoo@20` | اتصال Odoo بقاعدة البيانات |
-| قاعدة PostgreSQL الابتدائية | `postgre` | قاعدة تُنشأ عند تهيئة PostgreSQL لأول مرة |
-| واجهة Odoo | `http://localhost:10020` | استخدام النظام من المتصفح |
-| منفذ المحادثة المباشرة | `http://localhost:20020` | خدمة المحادثة والاتصال المباشر |
+| قاعدة PostgreSQL الابتدائية | `postgre` | قاعدة تُنشأ عند أول تهيئة فقط |
+| قاعدة Odoo | `odoo10020` | قاعدة Odoo التي يهيئها `run.sh` |
+| واجهة Odoo | `http://localhost:10020/odoo` | الاستخدام من المتصفح |
+| منفذ المحادثة | `http://localhost:20020` | خدمة المحادثة اللحظية (غير قابلة للتصفح) |
 
-> كلمة مرور Odoo الرئيسية ليست كلمة مرور حساب المستخدم الذي ستنشئه داخل
-> قاعدة بيانات Odoo. غيّر كلمات المرور الافتراضية قبل إتاحة الخادم للإنترنت.
+> `POSTGRES_DB` في `.env` هي قاعدة تهيئة PostgreSQL فقط، وليست قاعدة Odoo.
+> غيّر كل كلمات المرور الافتراضية قبل النشر العام.
 
 ---
 
-## 🚀 التثبيت السريع
+## ‏🚀 التثبيت السريع
 
 ### 1. تنزيل المشروع
 
@@ -98,25 +73,17 @@ git clone https://github.com/abdalazeim/InstallingOdoo20-Docker-Deployment.git
 cd InstallingOdoo20-Docker-Deployment
 ```
 
-يمكن أيضًا تنزيل المستودع كملف ZIP وفك ضغطه، ثم فتح الطرفية داخل مجلد المشروع.
-
-### 2. إعداد ملف البيئة والصلاحيات
+### 2. إعداد ملف البيئة
 
 ```bash
 cp .env.example .env
 chmod 600 .env
-sudo mkdir -p postgresql
-sudo chmod 700 postgresql
 chmod +x entrypoint.sh
 ```
 
-> أنشئ `postgresql/` باستخدام `sudo`. تعمل حاوية PostgreSQL بالمستخدم `root`
-> وتعيد كتابة ملكية المجلد؛ إذا كان المجلد مملوكًا لمستخدم تسجيل الدخول فقد
-> تفشل الحاوية بـ `Permission denied`.
+عدّل `.env` وضع كلمات مرور قوية. لا ترفع `.env` إلى Git.
 
-عدّل ملف `.env` وضع كلمات مرور قوية بدل القيم التجريبية قبل النشر العام.
-
-### 3. تشغيل Odoo وPostgreSQL
+### 3. التشغيل
 
 ```bash
 docker compose pull
@@ -124,53 +91,64 @@ docker compose up -d
 docker compose ps
 ```
 
-افتح Odoo:
+### 4. تهيئة قاعدة بيانات Odoo
 
-| الخدمة | الرابط |
-|---|---|
-| واجهة Odoo | [http://localhost:10020](http://localhost:10020) |
-| منفذ المحادثة المباشرة | [http://localhost:20020](http://localhost:20020) |
+قاعدة `postgre` التي تنشئها صورة PostgreSQL **غير مهيأة** لـ Odoo، لذا
+صفحة الدخول تعيد `500` حتى تُهيّأ قاعدة Odoo:
 
-> منفذ `20020` مخصص لخدمة المحادثة/الاتصال المباشر، وليس واجهة ويب مستقلة.
+```bash
+docker compose exec -T odoo20 odoo -c /tmp/odoo.conf -d odoo20 -i base \
+  --stop-after-init --without-demo=all
+docker compose restart odoo20
+```
+
+### 5. التحقق
+
+```bash
+curl -I http://localhost:10020/odoo
+# المتوقع: HTTP/1.1 303 SEE OTHER  →  location: /odoo/odoo
+```
+
+ثم افتح `http://<IP>:10020/odoo` في المتصفح.
+
+> **بادئة Odoo 20:** انتقلت واجهة الويب من `/web` إلى `/odoo`.
+> `http://الخادم:10020/` يعيد التوجيه إلى `/odoo`، و`/odoo/discuss` و
+> `/odoo/sales` هي نقاط الدخول الطبيعية. المسارات `/web/login` و
+> `/web/database/manager` و`/web/database/selector` ما زالت موجودة كمسارات
+> خلفية قديمة. هذا سلوك Odoo المتعمد وليس خللًا في التثبيت.
 
 ---
 
-## 🧩 تشغيل أكثر من نسخة
+## ‏🧩 تشغيل أكثر من نسخة
 
-ينسخ السكربت `run.sh` المستودع إلى **مجلد جديد**، ويضبط منافذ وأسماء حاويات
-وشبكة خاصة بكل نسخة. لن يستبدل مجلدًا موجودًا.
-
-```mermaid
-flowchart TD
-    A([بدء]) --> B{هل مجلد الوجهة موجود؟}
-    B -->|نعم| X[توقف · اختر اسمًا آخر]
-    B -->|لا| C{Git + Docker Compose متوفران؟}
-    C -->|لا| Y[ثبّت المتطلبات]
-    C -->|نعم| D[نسخ المستودع]
-    D --> E[إنشاء .env ومجلد postgresql]
-    E --> F[ضبط المنافذ والأسماء الفريدة]
-    F --> G[تشغيل Odoo + PostgreSQL]
-    G --> H([فتح رابط النسخة])
-```
-
-**المتطلبات:** Git وDocker وDocker Compose v2 وصلاحية تشغيل Docker.
-
-نفّذ الأوامر من جذر المستودع:
+ينسخ `run.sh` المستودع إلى **مجلد جديد**، ويضبط منافذ وأسماء حاويات وشبكة
+خاصة بكل نسخة، ثم ينتظر جاهزية PostgreSQL و Odoo ويهيئ قاعدة Odoo تلقائيًا.
+لن يستبدل مجلدًا موجودًا.
 
 ```bash
 # النسخة الأولى
 sudo bash run.sh --destination odoo-live --port 10020 --chat 20020
 
 # النسخة الثانية
-sudo bash run.sh --destination odoo-test --port 11020 --chat 21020
+sudo bash run.sh --destination odoo-test --port 11020 --chat 21020 --db odoo_test
 ```
+
+| الخيار | الوظيفة |
+|---|---|
+| `--destination` | مجلد النسخة (إلزامي) |
+| `--port` | منفذ Odoo على المضيف (إلزامي) |
+| `--chat` | منفذ المحادثة (إلزامي) |
+| `--db` | اسم قاعدة Odoo (افتراضي `odoo<port>`) |
+| `--skip-init` | تشغيل الحاويات دون تهيئة قاعدة Odoo |
+
+الروابط بعد التثبيت:
 
 | النسخة | المجلد | رابط Odoo | منفذ المحادثة |
 |---|---|---|---|
-| `odoo-live` | `odoo-live/` | [http://localhost:10020](http://localhost:10020) | `20020` |
-| `odoo-test` | `odoo-test/` | [http://localhost:11020](http://localhost:11020) | `21020` |
+| `odoo-live` | `odoo-live/` | `http://localhost:10020/odoo` | `20020` |
+| `odoo-test` | `odoo-test/` | `http://localhost:11020/odoo` | `21020` |
 
-لإدارة نسخة محددة، انتقل إلى مجلدها:
+لإدارة نسخة معينة:
 
 ```bash
 cd odoo-live
@@ -180,58 +158,65 @@ docker compose logs -f
 
 ---
 
-## ⚙️ الإعدادات
-
-عدّل `.env` ولا تضفه إلى Git. الملف مستثنى بالفعل في `.gitignore`.
+## ‏⚙️ الإعدادات
 
 | المتغير | القيمة الافتراضية | الوظيفة |
 |---|---|---|
 | `ODOO_IMAGE` | `odoo:20` | صورة Odoo |
 | `PG_IMAGE` | `postgres:18` | صورة PostgreSQL |
-| `POSTGRES_USER` | `odoo20` | مستخدم قاعدة البيانات |
-| `POSTGRES_PASSWORD` | `odoo@20` (غيّره فورًا) | كلمة مرور قاعدة البيانات |
-| `POSTGRES_DB` | `postgre` | قاعدة تُنشأ عند تهيئة PostgreSQL لأول مرة |
+| `POSTGRES_USER` | `odoo20` | دور قاعدة البيانات |
+| `POSTGRES_PASSWORD` | `odoo@20` | كلمة مرور قاعدة البيانات |
+| `POSTGRES_DB` | `postgre` | قاعدة تهيئة PostgreSQL فقط |
 | `ODOO_ADMIN_PASSWORD` | `Admin@20` | كلمة مرور Odoo الرئيسية |
 | `ODOO_HTTP_PORT` | `10020` | منفذ المضيف لـ Odoo |
 | `ODOO_CHAT_PORT` | `20020` | منفذ المضيف للمحادثة |
+| `ODOO_NETWORK` | `odoo20_internal` | الشبكة الداخلية |
+| `ODOO_CONTAINER_NAME` | `odoo20` | اسم حاوية Odoo |
+| `ODOO_DB_CONTAINER_NAME` | `odoo20-db` | اسم حاوية PostgreSQL |
 | `ODOO_DOMAIN` | مطلوب مع Traefik | اسم النطاق |
 | `DOCKER_PROXY_NETWORK` | `proxy` | شبكة Traefik الخارجية |
 
-> **قاعدة بيانات موجودة:** متغيرات تهيئة PostgreSQL تُطبَّق عند أول تهيئة
-> لمجلد البيانات فقط. تغيير كلمات المرور في `.env` لا يغيّر بيانات PostgreSQL
-> الموجودة.
+> **قاعدة بيانات موجودة:** متغيرات PostgreSQL تُطبَّق عند أول تهيئة فقط.
+> تغيير كلمات المرور في `.env` لا يغيّر بيانات موجودة.
 
-الإضافات المخصصة توضع في `addons/`. إعداد Odoo الأساسي موجود في
-`etc/odoo.conf`، بينما تُحقن الأسرار وقت التشغيل من البيئة.
+الإضافات في `addons/`، وإعداد Odoo في `etc/odoo.conf` (يُحقن منه
+`/tmp/odoo.conf` وقت التشغيل).
+
+### تخزين بيانات PostgreSQL على المضيف (اختياري)
+
+الملف `docker-compose.bindmount.yml` يضع البيانات في `./postgresql` بدل الحجم
+المُدار:
+
+```bash
+sudo rm -rf postgresql
+sudo mkdir -p postgresql
+sudo chmod 700 postgresql
+docker compose -f docker-compose.bindmount.yml up -d
+```
+
+> يجب إنشاء المجلد بـ `sudo`. إذا كان مملوكًا لمستخدم آخر فقد تفشل الحاوية بـ
+> `mkdir: cannot create directory '/var/lib/postgresql': Permission denied`.
 
 ---
 
-## 🧰 إدارة الحاويات
-
-نفّذ الأوامر من مجلد النشر:
+## ‏🧰 إدارة الحاويات
 
 | العملية | الأمر |
 |---|---|
 | تشغيل | `docker compose up -d` |
-| حالة الحاويات | `docker compose ps` |
-| سجلات كل الخدمات | `docker compose logs -f` |
+| الحالة | `docker compose ps` |
+| السجلات | `docker compose logs -f` |
 | سجلات Odoo | `docker compose logs -f odoo20` |
 | سجلات PostgreSQL | `docker compose logs -f db` |
 | إعادة تشغيل | `docker compose restart` |
-| إيقاف مع إبقاء الحاويات والبيانات | `docker compose stop` |
-| إيقاف مع الحفاظ على البيانات | `docker compose down` |
+| إيقاف مع حفظ البيانات | `docker compose down` |
 
-الخدمتان تستخدمان `restart: always`. يحفظ `docker compose down` البيانات.
-تجنب `docker compose down -v` إلا إذا كنت تريد حذف حجم بيانات Odoo. لا تحذف
-مجلد `postgresql/` إلا إذا كنت تريد حذف بيانات قاعدة البيانات.
+كل الخدمات تستخدم `restart: always`. تجنب `docker compose down -v` لأنه يحذف
+حجم قاعدة البيانات.
 
 ---
 
-## 💾 النسخ الاحتياطي
-
-البيانات محفوظة في مجلد `postgresql/` وحجم Odoo المسمى `odoo_data`. نفّذ
-الأوامر التالية من مجلد النسخة الافتراضية؛ إذا أنشأت النسخة عبر `run.sh`
-فاستخدم أسماء الحاويات التي تظهرها `docker compose ps`.
+## ‏💾 النسخ الاحتياطي
 
 ```bash
 mkdir -p backups
@@ -241,54 +226,14 @@ docker cp odoo20:/tmp/odoo-data.tar.gz backups/odoo-data.tar.gz
 docker exec odoo20 rm -f /tmp/odoo-data.tar.gz
 ```
 
-احمِ ملفات النسخ الاحتياطي، واحتفظ بنسخة إضافية خارج الخادم، واختبر
-الاستعادة دوريًا.
+استخدم أسماء الحاويات الظاهرة في `docker compose ps` عند العمل مع نسخة من
+`run.sh`. احمِ ملفات النسخ، واحتفظ بنسخة خارج الخادم، واختبر الاستعادة دوريًا.
 
 ---
 
-## 🔒 الصلاحيات وإعداد Linux
+## ‏🌐 Traefik و HTTPS (اختياري)
 
-### الصلاحيات
-
-لا تستخدم `chmod -R 777`؛ فهو يمنح صلاحيات كاملة لكل مستخدم على النظام. استخدم
-صلاحيات محدودة:
-
-```bash
-chmod 600 .env
-chmod 700 postgresql
-chmod +x entrypoint.sh
-```
-
-إذا ظهر خطأ صلاحيات لمسار mount محدد، افحص السجلات والمسار أولًا:
-
-```bash
-docker compose logs --tail=100
-ls -ld addons etc postgresql
-```
-
-عدّل صلاحيات المجلد المتأثر فقط. لا تجعل ملفات قاعدة البيانات أو الأسرار قابلة
-للكتابة للجميع.
-
-### اختياري · رفع حد inotify
-
-قد يفيد هذا الإعداد عند تشغيل عدة نسخ ويظهر حد مراقبة الملفات في Linux:
-
-```bash
-if grep -qF "fs.inotify.max_user_watches" /etc/sysctl.conf; then
-  grep -F "fs.inotify.max_user_watches" /etc/sysctl.conf
-else
-  echo "fs.inotify.max_user_watches = 524288" | sudo tee -a /etc/sysctl.conf
-fi
-
-sudo sysctl -p
-```
-
----
-
-## 🌐 Traefik وHTTPS (اختياري)
-
-استخدم [`docker-compose.traefik.yml`](docker-compose.traefik.yml) فقط إذا كان
-Traefik يعمل بالفعل والشبكة الخارجية موجودة.
+استخدم `docker-compose.traefik.yml` فقط إذا كان Traefik يعمل وشبكته موجودة.
 
 ```dotenv
 ODOO_DOMAIN=odoo.example.com
@@ -297,77 +242,64 @@ CERTSRESOLVER=letsencrypt
 ```
 
 ```bash
-docker network create proxy   # إذا لم تكن الشبكة موجودة
+docker network create proxy   # إن لم تكن موجودة
 docker compose -f docker-compose.traefik.yml up -d
 ```
 
-اضبط DNS وإعدادات Traefik على الخادم، ثم افتح `https://odoo.example.com`. لا
-تشغّل وضع المنافذ المباشرة ووضع Traefik للنسخة نفسها في الوقت نفسه.
+لا تشغّل وضع المنافذ المباشرة ووضع Traefik للنسخة نفسها في الوقت نفسه.
 
 ---
 
-## 🩺 استكشاف الأخطاء
+## ‏🩺 استكشاف الأخطاء
 
 | المشكلة | الإجراء |
 |---|---|
-| المنفذ مستخدم | غيّر `ODOO_HTTP_PORT` أو `ODOO_CHAT_PORT` في `.env` ثم نفّذ `docker compose up -d` |
-| Odoo لا يتصل بقاعدة البيانات | راجع `docker compose logs db odoo20` |
-| فحص جاهزية PostgreSQL | نفّذ `docker compose exec db pg_isready -U odoo20 -d postgre` |
-| خطأ في إعداد Odoo | راجع `docker compose logs --tail=100 odoo20` |
-| `curl` من المضيف يعيد الاتصال بينما يظهر `HTTP service running on 127.0.0.1:8069` | Odoo يستمع على `127.0.0.1` افتراضيًا. اضبط `http_interface = 0.0.0.0` في `etc/odoo.conf` ليصبح المنفذ المنشور متاحًا |
-| كلمات المرور تغيّرت دون أثر | بيانات PostgreSQL الحالية لا تُعاد تهيئتها من `.env` |
-| `PostgreSQL data in /var/lib/postgresql/data (unused mount/volume)` أو `mkdir: cannot create directory '/var/lib/postgresql': Permission denied` | صور PostgreSQL 18 تخزّن البيانات في مجلد يحمل رقم الإصدار. يجب أن يكون التركيب `./postgresql:/var/lib/postgresql` مع `PGDATA=/var/lib/postgresql/18/docker`، وأن تعمل خدمة `db` بالمستخدم `root` ليصحح entrypoint الملكية |
-| Traefik لا يوجّه الطلب | تحقق من DNS والشبكة الخارجية و`ODOO_DOMAIN` |
-
-```mermaid
-flowchart LR
-    A([Odoo لا يعمل]) --> B{هل الحاويات تعمل؟}
-    B -->|لا| C[افحص docker compose ps]
-    B -->|نعم| D{هل قاعدة البيانات جاهزة؟}
-    D -->|لا| E[افحص سجلات PostgreSQL وكلمات المرور]
-    D -->|نعم| F{هل المنفذ صحيح؟}
-    F -->|لا| G[راجع المنافذ في .env]
-    F -->|نعم| H[افحص سجلات Odoo والإعدادات]
-```
+| المنفذ مستخدم | غيّر `ODOO_HTTP_PORT` أو `ODOO_CHAT_PORT` في `.env` ثم `docker compose up -d` |
+| Odoo لا يتصل بقاعدة البيانات | `docker compose logs db odoo20` |
+| فحص جاهزية PostgreSQL | `docker compose exec db pg_isready -U odoo20 -d postgre` |
+| `curl` يعيد الاتصال والسجل يقول `HTTP service running on 127.0.0.1:8069` | أضف `http_interface = 0.0.0.0` إلى `etc/odoo.conf` ثم أعد التشغيل |
+| `500` على صفحة الدخول مع `Database <db> not initialized` | نفّذ `odoo -c /tmp/odoo.conf -d <db> -i base --stop-after-init` |
+| `/` يعيد التوجيه و`/odoo/...` يعمل | سلوك Odoo 20 الطبيعي: انتقلت الواجهة من `/web` إلى `/odoo`. افتح `http://الخادم:10020/odoo` |
+| `http://الخادم:20020/` لا يعرض شيئًا | المنفذ `20020` لخدمة WebSocket فقط وليس واجهة ويب. استخدم `10020` |
+| `mkdir: cannot create directory '/var/lib/postgresql'` | احذف `postgresql/` بـ `sudo` وأنشئه بـ `sudo` (أو استخدم الحجم المُدار) |
+| `PostgreSQL data in /var/lib/postgresql/data (unused mount/volume)` | استخدم `PGDATA=/var/lib/postgresql/18/docker` والتركيب على `/var/lib/postgresql` |
+| `Address already in use` أثناء التهيئة | الحاوية تعمل بالفعل؛ لا تشغّل `odoo` يدويًا داخلها. أعد التشغيل فقط |
+| خطأ عميل `odoo.loader.modules.get(...) is undefined` | امسح ذاكرة أصول المتصفح (hard reload)، ثم أعد بناء الأصول: `docker compose exec -T odoo20 odoo -c /tmp/odoo.conf -d <db> --stop-after-init` |
+| كلمات المرور تغيّرت بلا أثر | بيانات PostgreSQL الحالية لا تُعاد تهيئتها من `.env` |
 
 ---
 
-## 🗂️ هيكل المشروع والأمان
+## ‏🗂️ هيكل المشروع والأمان
 
 ```text
 InstallingOdoo20-Docker-Deployment/
-├── addons/                       # الإضافات المخصصة
+├── addons/                          # إضافات Odoo المخصصة
 ├── etc/
-│   ├── odoo.conf                 # قالب إعداد Odoo
-│   └── requirements.txt          # حزم Python اختيارية
-├── postgresql/                   # بيانات PostgreSQL (دائمة)
-├── .env.example                  # قالب متغيرات البيئة
-├── docker-compose.yml            # نشر مباشر عبر منافذ المضيف
-├── docker-compose.traefik.yml    # نشر اختياري عبر Traefik
-├── entrypoint.sh                 # تهيئة الإعداد وانتظار PostgreSQL
-├── run.sh                        # تثبيت اختياري لنسخ متعددة
+│   ├── odoo.conf                    # قالب إعداد Odoo
+│   └── requirements.txt             # حزم Python اختيارية
+├── postgresql/                      # بيانات PostgreSQL (bind mount اختياري)
+├── .env.example                     # قالب متغيرات البيئة
+├── docker-compose.yml               # نشر مباشر (حجم مُدار)
+├── docker-compose.bindmount.yml     # نشر مباشر (مجلد مضيف)
+├── docker-compose.traefik.yml       # نشر عبر Traefik
+├── entrypoint.sh                    # إعداد وقت التشغيل وانتظار PostgreSQL
+├── run.sh                           # مثبّت النسخ المتعددة
 └── README.md
 ```
 
 **قائمة أمان سريعة:**
 
-- غيّر كلمات مرور Odoo وPostgreSQL الافتراضية.
+- غيّر كلمات مرور Odoo و PostgreSQL الافتراضية.
 - لا ترفع `.env` أو بيانات قواعد البيانات أو النسخ الاحتياطية إلى Git.
 - لا تنشر منفذ PostgreSQL.
 - استخدم HTTPS عبر وكيل عكسي موثوق عند النشر العام.
-- حدّث صور Docker وخادم المضيف بانتظام.
+- حدّث صور Docker والخادم بانتظام.
 
 ---
 
-## 🔗 روابط مفيدة
+## ‏🔗 روابط مفيدة
 
 - [توثيق Odoo 20](https://www.odoo.com/documentation/20.0/)
 - [توثيق Docker Compose](https://docs.docker.com/compose/)
+- [ملاحظة PGDATA في صور PostgreSQL](https://github.com/docker-library/postgres/pull/1259)
 - [مستودع GitHub](https://github.com/abdalazeim/InstallingOdoo20-Docker-Deployment)
-- [الإبلاغ عن مشكلة](https://github.com/abdalazeim/InstallingOdoo20-Docker-Deployment/issues)
-
-<div dir="rtl" align="right">
-
-Odoo 20 · PostgreSQL 18 · Docker Compose · Ubuntu/Linux · Traefik (اختياري)
-
-</div>

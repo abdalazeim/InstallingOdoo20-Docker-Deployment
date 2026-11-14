@@ -1,0 +1,73 @@
+# Odoo 20 Deployment - PostgreSQL bind-mount variant
+#
+# Use this file INSTEAD of docker-compose.yml when you want PostgreSQL data in
+# a host directory (./postgresql) for direct file-level backups:
+#
+#   docker compose -f docker-compose.bindmount.yml up -d
+#
+# The directory must be created with sudo and must be empty on first start:
+#
+#   sudo rm -rf postgresql
+#   sudo mkdir -p postgresql
+#   sudo chmod 700 postgresql
+#
+# The db service runs as root so the image entrypoint can fix ownership of the
+# mounted directory. PostgreSQL 18 keeps data in /var/lib/postgresql/18/docker.
+
+services:
+  db:
+    container_name: ${ODOO_DB_CONTAINER_NAME:-odoo20-db}
+    image: ${PG_IMAGE:-postgres:18}
+    user: root
+    restart: always
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-odoo20}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-odoo@20}
+      - POSTGRES_DB=${POSTGRES_DB:-postgre}
+      - PGDATA=/var/lib/postgresql/18/docker
+    volumes:
+      - ./postgresql:/var/lib/postgresql
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-odoo20} -d ${POSTGRES_DB:-postgre}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  odoo20:
+    container_name: ${ODOO_CONTAINER_NAME:-odoo20}
+    image: ${ODOO_IMAGE:-odoo:20}
+    user: root
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+    tty: true
+    command: ["--config=/tmp/odoo.conf"]
+    environment:
+      - HOST=db
+      - PORT=5432
+      - USER=${POSTGRES_USER:-odoo20}
+      - PASSWORD=${POSTGRES_PASSWORD:-odoo@20}
+      - ODOO_ADMIN_PASSWORD=${ODOO_ADMIN_PASSWORD:-Admin@20}
+      - PIP_BREAK_SYSTEM_PACKAGES=1
+    ports:
+      - "${ODOO_HTTP_PORT:-10020}:8069"
+      - "${ODOO_CHAT_PORT:-20020}:8072"
+    volumes:
+      - ./entrypoint.sh:/entrypoint.sh:ro
+      - ./addons:/mnt/extra-addons
+      - ./etc:/etc/odoo
+      - odoo_data:/var/lib/odoo
+    networks:
+      - internal
+
+networks:
+  internal:
+    name: ${ODOO_NETWORK:-odoo20_internal}
+    driver: bridge
+
+volumes:
+  odoo_data:

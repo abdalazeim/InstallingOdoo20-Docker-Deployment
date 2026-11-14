@@ -1,15 +1,17 @@
-# Odoo 20 Private Repository - Infrastructure Manager Edition
+# Odoo 20 Deployment - Infrastructure Manager Edition
 #
-# مستودع خاص لـ Odoo 20 يعتمد على الأفكار من Odoo-MultiVersion-Deployment
-# ولكن محسن ليتناسب مع نظام مدير البنية التحتية (Infrastructure Manager).
+# Features:
+# - Environment-driven configuration (no hard-coded passwords)
+# - Optional Traefik/HTTPS reverse-proxy mode
+# - Direct host-port (standalone) mode
+# - Isolated internal network per deployment
+# - Safe entrypoint with PostgreSQL readiness gate
+# - PostgreSQL data stored in a named volume (no host permission issues)
 #
-# الميزات:
-# - دعم متغيرات البيئة (لا كلمات مرور مكتوبة ضمنيًا)
-# - دعم ترافيك كبروكسي عكسي (HTTPS)
-# - وضع ستاندون (وصول مباشر)
-# - شبكة داخلية معزولة لكل ideal
-# - EntryPoint آمن مع انتظار PostgreSQL
-# - ملف .gitignore آمن يستبعد الأسرار والبيانات
+# PostgreSQL 18 stores data in a major-version directory (PGDATA), so the
+# legacy "/var/lib/postgresql/data" mount point is not supported. This file
+# uses the Docker-managed volume "odoo_pgdata", which avoids host ownership
+# problems entirely. See docker-compose.bindmount.yml for a host-path variant.
 
 services:
   db:
@@ -21,12 +23,9 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-odoo20}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-odoo@20}
       - POSTGRES_DB=${POSTGRES_DB:-postgre}
-      # PostgreSQL 18 stores data in a major-version directory; the entrypoint
-      # only initialises an empty PGDATA, so the legacy /var/lib/postgresql/data
-      # mount point is not supported.
       - PGDATA=/var/lib/postgresql/18/docker
     volumes:
-      - ./postgresql:/var/lib/postgresql
+      - odoo_pgdata:/var/lib/postgresql
     networks:
       - internal
     healthcheck:
@@ -71,3 +70,4 @@ networks:
 
 volumes:
   odoo_data:
+  odoo_pgdata:
