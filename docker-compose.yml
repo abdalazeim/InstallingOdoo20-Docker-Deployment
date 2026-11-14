@@ -60,6 +60,7 @@ services:
       - ./addons:/mnt/extra-addons
       - ./etc:/etc/odoo
       - odoo_data:/var/lib/odoo
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
     networks:
       - internal
 
