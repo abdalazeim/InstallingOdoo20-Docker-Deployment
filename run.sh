@@ -3,8 +3,9 @@
 # Odoo 20 deployment installer (single or multiple instances).
 #
 # Clones this repository into a NEW directory, writes that instance's .env,
-# assigns unique ports and container/network names, starts the stack, waits for
-# PostgreSQL and Odoo to become ready, then initialises the Odoo database.
+# assigns unique ports and container/network names, starts the stack and waits
+# until Odoo answers on /odoo. The Odoo database is created by the container
+# entrypoint on first start, so no manual initialisation step is needed.
 #
 # Requirements: Git, Docker Engine, Docker Compose v2, permission to run Docker.
 # ==============================================================================
@@ -23,8 +24,8 @@ Usage:
   bash run.sh --destination <directory> --port <odoo-port> --chat <chat-port> [options]
 
 Options:
-  --db <name>     Odoo database to initialise (default: odoo<odoo-port>)
-  --skip-init     Start containers without initialising the Odoo database
+  --db <name>     Odoo database to create (default: odoo<odoo-port>)
+  --skip-init     Do not create the Odoo database on first start
   -h, --help      Show this help
 
 Examples:
@@ -133,7 +134,6 @@ git clone --depth 1 "$REPOSITORY_URL" "$DESTINATION"
 PROJECT_DIR="$DESTINATION"
 cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
 chmod 600 "$PROJECT_DIR/.env"
-chmod +x "$PROJECT_DIR/entrypoint.sh"
 
 set_env() {
     local key="$1"
@@ -149,6 +149,10 @@ set_env() {
 set_env "ODOO_HTTP_PORT" "$ODOO_PORT"
 set_env "ODOO_CHAT_PORT" "$CHAT_PORT"
 set_env "ODOO_DB_NAME" "$DB_NAME"
+set_env "ODOO_AUTO_INIT" "1"
+if [[ -n "$SKIP_INIT" ]]; then
+    set_env "ODOO_AUTO_INIT" "0"
+fi
 set_env "ODOO_NETWORK" "odoo20_${INSTANCE_SLUG}_internal"
 set_env "ODOO_CONTAINER_NAME" "odoo20-${INSTANCE_SLUG}"
 set_env "ODOO_DB_CONTAINER_NAME" "odoo20-${INSTANCE_SLUG}-db"
@@ -171,55 +175,39 @@ ODOO_CONTAINER="$(grep -E '^ODOO_CONTAINER_NAME=' "$PROJECT_DIR/.env" | cut -d= 
 ODOO_CONTAINER="${ODOO_CONTAINER:-odoo20}"
 
 printf 'Waiting for PostgreSQL to become healthy...\n'
+db_status="missing"
 for _ in $(seq 1 60); do
-    status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \
+    db_status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \
         "${ODOO_CONTAINER}-db" 2>/dev/null || echo missing)"
-    if [[ "$status" == "healthy" ]]; then
+    if [[ "$db_status" == "healthy" ]]; then
         break
     fi
     sleep 2
 done
 
-if [[ "$status" != "healthy" ]]; then
+if [[ "$db_status" != "healthy" ]]; then
     printf 'Error: PostgreSQL did not become healthy. Check: compose -f %s/docker-compose.yml logs db\n' "$PROJECT_DIR" >&2
     exit 1
 fi
 
-printf 'Waiting for Odoo HTTP service...\n'
-for _ in $(seq 1 90); do
+printf 'Waiting for Odoo to answer on /odoo (the first start creates the database)...\n'
+odoo_ready=""
+for _ in $(seq 1 150); do
     if curl -fsS -o /dev/null "http://localhost:${ODOO_PORT}/odoo" 2>/dev/null; then
+        odoo_ready="1"
         break
     fi
     sleep 2
 done
 
-if [[ -n "$SKIP_INIT" ]]; then
-    printf '\nStarted without database initialisation (--skip-init).\n'
-else
-    printf 'Stopping Odoo to free the HTTP port for initialisation...\n'
-    compose stop odoo20 >/dev/null
-
-    printf 'Initialising Odoo database "%s"...\n' "$DB_NAME"
-    if compose run --rm --no-deps \
-        odoo20 -c /tmp/odoo.conf -d "$DB_NAME" -i base --stop-after-init; then
-        printf 'Database "%s" is ready.\n' "$DB_NAME"
-    else
-        printf 'Warning: database initialisation failed. Create it from the UI instead.\n' >&2
-    fi
-
-    printf 'Starting Odoo...\n'
-    compose start odoo20 >/dev/null
-
-    printf 'Waiting for Odoo HTTP service...\n'
-    for _ in $(seq 1 90); do
-        if curl -fsS -o /dev/null "http://localhost:${ODOO_PORT}/odoo" 2>/dev/null; then
-            break
-        fi
-        sleep 2
-    done
+printf '\n'
+if [[ -z "$odoo_ready" ]]; then
+    printf 'Error: Odoo did not become ready.\n' >&2
+    printf 'Logs:      docker compose -f %s/docker-compose.yml logs --tail=80 odoo20\n' "$PROJECT_DIR" >&2
+    exit 1
 fi
 
-printf '\nOdoo deployment is ready.\n'
+printf 'Odoo deployment is ready.\n'
 printf 'Project:   %s\n' "$PROJECT_DIR"
 printf 'Odoo:      http://localhost:%s/odoo\n' "$ODOO_PORT"
 printf 'Database:  %s\n' "$DB_NAME"
