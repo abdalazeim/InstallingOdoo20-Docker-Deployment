@@ -35,10 +35,10 @@
 
 ## 1. Overview
 
-Run Odoo 20 and PostgreSQL 18 with Docker Compose. Use the standard setup for
-one instance, or `run.sh` to install separate instances on different ports and
-initialise their Odoo database automatically. An optional Compose file connects
-Odoo to an existing Traefik network.
+Run Odoo 20 and PostgreSQL 18 with Docker Compose. `docker compose up -d` is
+enough for one instance: the container creates and initialises its own Odoo
+database on first start. Use `run.sh` to install several instances on different
+ports. An optional Compose file connects Odoo to an existing Traefik network.
 
 | Component | Image | Host access | Persistent storage |
 |---|---|---|---|
@@ -74,6 +74,18 @@ through the configured reverse proxy instead of host-published ports.
 
 ## 4. Quick Start
 
+Three commands. No `.env` editing, no manual database step:
+
+```bash
+git clone https://github.com/abdalazeim/InstallingOdoo20-Docker-Deployment.git
+cd InstallingOdoo20-Docker-Deployment
+docker compose up -d
+```
+
+On first start the entrypoint creates the `odoo20` database, loads `base`, and
+then starts the HTTP service. When it answers, open
+`http://<server-ip>:10020/odoo`.
+
 ### 1 · Get the project
 
 ```bash
@@ -81,53 +93,44 @@ git clone https://github.com/abdalazeim/InstallingOdoo20-Docker-Deployment.git
 cd InstallingOdoo20-Docker-Deployment
 ```
 
-### 2 · Set environment
+### 2 · Optional: change ports or passwords
+
+The defaults work as-is. To change them, create an `.env` from the template:
 
 ```bash
 cp .env.example .env
 chmod 600 .env
-chmod +x entrypoint.sh
 ```
 
 Edit `.env` and replace the example passwords before exposing the service.
 
-### 3 · Start
+### 3 · Start and follow the first boot
 
 ```bash
 docker compose pull
 docker compose up -d
 docker compose ps
+docker compose logs -f odoo20
 ```
 
-### 4 · Initialise the Odoo database
+The first start takes one to three minutes: PostgreSQL starts, then the
+container creates and initialises the database, then Odoo begins to serve.
+`docker compose logs -f odoo20` reports each step:
 
-The `postgre` database created by the PostgreSQL image is **not** an Odoo
-database. Until an Odoo database exists, every URL returns `500` (or redirects to
-`/web/database/selector`).
-
-Free the HTTP port, initialise the database, then start Odoo again:
-
-```bash
-docker compose stop odoo20
-docker compose run --rm --no-deps odoo20 -c /tmp/odoo.conf -d odoo20 \
-  -i base --stop-after-init
-docker compose start odoo20
+```text
+Initialising Odoo database odoo20 (first start only)...
+...
+INFO ... HTTP service (werkzeug) running on http://0.0.0.0:8069
 ```
 
-Do **not** add `--entrypoint odoo`: the entrypoint renders `/tmp/odoo.conf`, and
-skipping it makes Odoo fail with `config file '/tmp/odoo.conf' ... doesn't
-exist`. Do not use `--without-demo=all` either; Odoo 20 rejects it with
-`invalid boolean value: 'all', assume True`.
-
-### 5 · Verify
+### 4 · Verify
 
 ```bash
 curl -I http://localhost:10020/odoo
 ```
 
-With `ODOO_DB_NAME` set (see below) the answer is a redirect to the login page
-or `200`, never `/web/database/selector`. Then open
-`http://<server-ip>:10020/odoo`.
+The answer is `200` or a redirect to `/web/login`, never `/web/database/selector`.
+Then open `http://<server-ip>:10020/odoo`.
 
 > **Odoo 20 URL prefix:** the web client moved from `/web` to `/odoo`.
 > `http://server:10020/` redirects to `/odoo`, and `/odoo/discuss`,
@@ -135,11 +138,12 @@ or `200`, never `/web/database/selector`. Then open
 > `/web/database/manager` and `/web/database/selector` still exist as legacy
 > backend routes. This is intentional Odoo behaviour, not a deployment fault.
 
-> **`ODOO_DB_NAME` is required for a usable browser session.** With
-> `list_db = False`, Odoo cannot show the database selector, so an unset
-> `ODOO_DB_NAME` leaves `/odoo` stuck at `303 -> /web/database/selector`. Set it
-> to the database name created in step 4 (`odoo20` by default) and recreate the
-> container with `docker compose up -d --force-recreate odoo20`.
+> **`ODOO_DB_NAME` drives the database.** With `list_db = False`, Odoo cannot
+> show the database selector, so a wrong or unset name leaves `/odoo` stuck at
+> `303 -> /web/database/selector`. The default is `odoo20`; set a distinct name
+> per instance, then restart with `docker compose up -d`. Set
+> `ODOO_AUTO_INIT=0` if you prefer to create databases yourself with
+> `odoo -i base`.
 
 ## 5. Access and Initial Credentials
 
@@ -157,7 +161,7 @@ or `200`, never `/web/database/selector`. Then open
 | PostgreSQL user | `odoo20` | Odoo-to-PostgreSQL connection |
 | PostgreSQL password | `odoo@20` | Odoo-to-PostgreSQL connection |
 | Initial PostgreSQL database | `postgre` | PostgreSQL image initialization only |
-| Odoo database created by `run.sh` | `odoo<port>` | The actual Odoo database |
+| Odoo database | `odoo20` | Created automatically on first start (`ODOO_DB_NAME`) |
 
 These are example credentials, **not production secrets**. `POSTGRES_DB` is the
 PostgreSQL bootstrap database, not an Odoo database.
@@ -175,6 +179,7 @@ Edit `.env`; do not commit it. The file is already excluded by `.gitignore`.
 | `POSTGRES_DB` | `postgre` | PostgreSQL bootstrap database only |
 | `ODOO_ADMIN_PASSWORD` | `Admin@20` | Odoo master password |
 | `ODOO_DB_NAME` | `odoo20` | Odoo database this instance serves (`db_name`); leave empty for selector mode |
+| `ODOO_AUTO_INIT` | `1` | Create `ODOO_DB_NAME` with `odoo -i base` on first start |
 | `ODOO_HTTP_PORT` | `10020` | Host port → Odoo `8069` |
 | `ODOO_CHAT_PORT` | `20020` | Host port → Odoo `8072` |
 | `ODOO_NETWORK` | `odoo20_internal` | Private Docker network |
@@ -217,9 +222,10 @@ docker compose -f docker-compose.bindmount.yml up -d
 ## 7. Multiple Instances
 
 `run.sh` clones this repository into a **new directory**, writes that instance's
-`.env`, sets its ports and unique container/network names, starts Docker
-Compose, waits for PostgreSQL and Odoo to become ready, and initialises the Odoo
-database. It will not overwrite an existing destination.
+`.env` (ports, database name, unique container/network names), starts Docker
+Compose, and waits until PostgreSQL is healthy and Odoo answers on `/odoo`. The
+container creates the Odoo database on first start, so the installer finishes
+with a working instance. It will not overwrite an existing destination.
 
 ```mermaid
 flowchart TD
@@ -229,10 +235,10 @@ flowchart TD
     C -->|No| Y[Install requirements]
     C -->|Yes| D[Clone this repository]
     D --> E[Create instance .env]
-    E --> F[Set ports and unique names]
+    E --> F[Set ports, database, unique names]
     F --> G[Start Odoo + PostgreSQL]
     G --> H[Wait for healthy + HTTP ready]
-    H --> I[Initialise Odoo database]
+    H --> I[Entrypoint creates the database]
     I --> J([Open the instance URL])
 ```
 
@@ -253,7 +259,7 @@ sudo bash run.sh --destination odoo-test --port 11020 --chat 21020 --db odoo_tes
 | `--port` | Odoo host port (required) |
 | `--chat` | Live service host port (required) |
 | `--db` | Odoo database name (default `odoo<port>`) |
-| `--skip-init` | Start containers without initialising Odoo |
+| `--skip-init` | Set `ODOO_AUTO_INIT=0` so the database is not created automatically |
 
 | Instance | Destination | Odoo URL | Live service |
 |---|---|---|---|
@@ -377,13 +383,14 @@ sudo sysctl -p
 | Odoo cannot connect to PostgreSQL | `docker compose logs db odoo20` |
 | PostgreSQL readiness | `docker compose exec db pg_isready -U odoo20 -d postgre` |
 | Host `curl` resets while Odoo logs `HTTP service running on 127.0.0.1:8069` | `etc/odoo.conf` must set `http_interface = 0.0.0.0` |
-| `500` on the login page with `Database <db> not initialized` | Run `odoo -c /tmp/odoo.conf -d <db> -i base --stop-after-init` |
+| `500` on the login page with `Database <db> not initialized` | The first start is still initialising (watch `docker compose logs -f odoo20`), or `ODOO_AUTO_INIT=0`. Create it with `odoo -c /tmp/odoo.conf -d <db> -i base --stop-after-init` |
 | `303 -> /web/database/selector` on every URL | `ODOO_DB_NAME` is empty or does not match an initialised database. Set it in `.env`, then `docker compose up -d --force-recreate odoo20` |
+| `Initialising Odoo database ...` never finishes | Check `docker compose logs db`; PostgreSQL must be healthy before the container can create the database |
 | `exec: "/entrypoint.sh": permission denied` | Recreate the stack; the compose files run the entrypoint as `["/bin/sh", "/entrypoint.sh"]` |
 | `Unknown command 'odoo'` from `docker compose run` | Do not pass a command starting with `odoo`; the entrypoint already prepends it |
 | `/` returns a redirect and `/odoo/...` works | Normal Odoo 20 behaviour: the web client prefix changed from `/web` to `/odoo`. Open `http://server:10020/odoo` |
 | `http://server:20020/` shows nothing | Port `20020` is the WebSocket/live service only, not a web UI. Use port `10020` for Odoo |
-| Odoo works on one instance's port but not another's | Each `run.sh` instance has its own ports, volumes, and database. Initialise each instance's Odoo database (`--db` or `odoo -i base`) before use |
+| Odoo works on one instance's port but not another's | Each `run.sh` instance has its own ports, volumes, and database name. Start it from its own directory so its `.env` is read |
 | `mkdir: cannot create directory '/var/lib/postgresql'` | Recreate the bind-mount directory with `sudo`, or use the default managed volume |
 | `PostgreSQL data in /var/lib/postgresql/data (unused mount/volume)` | Use `PGDATA=/var/lib/postgresql/18/docker` and mount `/var/lib/postgresql` |
 | `Address already in use` during initialisation | Containers are already running; do not run a second `odoo` process inside the container |
@@ -399,8 +406,8 @@ flowchart LR
     D -->|No| E[Check PostgreSQL logs and credentials]
     D -->|Yes| F{HTTP bound to 0.0.0.0?}
     F -->|No| G[Set http_interface in etc/odoo.conf]
-    F -->|Yes| H{Odoo database initialised?}
-    H -->|No| I[Run odoo -i base]
+    F -->|Yes| H{Database created?}
+    H -->|No| I[Check odoo20 logs for the init step]
     H -->|Yes| J[Check browser assets]
 ```
 

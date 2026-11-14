@@ -55,7 +55,7 @@ docker run --rm hello-world
 | مستخدم PostgreSQL | `odoo20` | اتصال Odoo بقاعدة البيانات |
 | كلمة مرور PostgreSQL | `odoo@20` | اتصال Odoo بقاعدة البيانات |
 | قاعدة PostgreSQL الابتدائية | `postgre` | قاعدة تُنشأ عند أول تهيئة فقط |
-| قاعدة Odoo | `odoo10020` | قاعدة Odoo التي يهيئها `run.sh` |
+| قاعدة Odoo | `odoo20` | تُنشأ تلقائيًا عند أول تشغيل (`ODOO_DB_NAME`) |
 | واجهة Odoo | `http://localhost:10020/odoo` | الاستخدام من المتصفح |
 | منفذ المحادثة | `http://localhost:20020` | خدمة المحادثة اللحظية (غير قابلة للتصفح) |
 
@@ -66,6 +66,17 @@ docker run --rm hello-world
 
 ## ‏🚀 التثبيت السريع
 
+ثلاثة أوامر فقط، بدون تعديل `.env` وبدون خطوة تهيئة يدوية:
+
+```bash
+git clone https://github.com/abdalazeim/InstallingOdoo20-Docker-Deployment.git
+cd InstallingOdoo20-Docker-Deployment
+docker compose up -d
+```
+
+عند أول تشغيل ينشئ الـ entrypoint قاعدة `odoo20`، ويحمّل `base`، ثم يشغّل
+الويب. بعد ذلك افتح `http://<IP>:10020/odoo`.
+
 ### 1. تنزيل المشروع
 
 ```bash
@@ -73,50 +84,43 @@ git clone https://github.com/abdalazeim/InstallingOdoo20-Docker-Deployment.git
 cd InstallingOdoo20-Docker-Deployment
 ```
 
-### 2. إعداد ملف البيئة
+### 2. اختياري: تغيير المنافذ وكلمات المرور
+
+القيم الافتراضية تعمل مباشرة. لتغييرها أنشئ `.env` من القالب:
 
 ```bash
 cp .env.example .env
 chmod 600 .env
-chmod +x entrypoint.sh
 ```
 
 عدّل `.env` وضع كلمات مرور قوية. لا ترفع `.env` إلى Git.
 
-### 3. التشغيل
+### 3. التشغيل ومتابعة أول إقلاع
 
 ```bash
 docker compose pull
 docker compose up -d
 docker compose ps
+docker compose logs -f odoo20
 ```
 
-### 4. تهيئة قاعدة بيانات Odoo
+أول تشغيل يستغرق من دقيقة إلى ثلاث دقائق: يبدأ PostgreSQL ثم تُنشأ القاعدة
+وتُهيّأ ثم يبدأ Odoo بالخدمة. السجل يعرض كل خطوة:
 
-قاعدة `postgre` التي تنشئها صورة PostgreSQL **غير مهيأة** لـ Odoo، لذا
-صفحة الدخول تعيد `500` (أو تحوّل إلى `/web/database/selector`) حتى تُهيّأ قاعدة
-Odoo. أوقف Odoo لتحرير المنفذ، ثم هيّئ القاعدة، ثم أعد التشغيل:
-
-```bash
-docker compose stop odoo20
-docker compose run --rm --no-deps odoo20 -c /tmp/odoo.conf -d odoo20 \
-  -i base --stop-after-init
-docker compose start odoo20
+```text
+Initialising Odoo database odoo20 (first start only)...
+...
+INFO ... HTTP service (werkzeug) running on http://0.0.0.0:8069
 ```
 
-لا تُضِف `--entrypoint odoo`؛ فـ entrypoint هو من يولّد `/tmp/odoo.conf`،
-وتجاوزه يعطي `config file '/tmp/odoo.conf' ... doesn't exist`. ولا تستخدم
-`--without-demo=all`؛ فـ Odoo 20 يرفضها.
-
-### 5. التحقق
+### 4. التحقق
 
 ```bash
 curl -I http://localhost:10020/odoo
 ```
 
-مع ضبط `ODOO_DB_NAME` (بالأسفل) يكون الرد إعادة توجيه إلى صفحة الدخول أو
-`200`، وليس `/web/database/selector` أبدًا. ثم افتح
-`http://<IP>:10020/odoo` في المتصفح.
+الرد `200` أو إعادة توجيه إلى `/web/login`، وليس `/web/database/selector` أبدًا.
+ثم افتح `http://<IP>:10020/odoo` في المتصفح.
 
 > **بادئة Odoo 20:** انتقلت واجهة الويب من `/web` إلى `/odoo`.
 > `http://الخادم:10020/` يعيد التوجيه إلى `/odoo`، و`/odoo/discuss` و
@@ -124,19 +128,19 @@ curl -I http://localhost:10020/odoo
 > `/web/database/manager` و`/web/database/selector` ما زالت موجودة كمسارات
 > خلفية قديمة. هذا سلوك Odoo المتعمد وليس خللًا في التثبيت.
 
-> **`ODOO_DB_NAME` لازمة لجلسة متصفح عاملة.** مع `list_db = False` لا يستطيع
-> Odoo عرض منتقي قواعد البيانات، لذا غياب `ODOO_DB_NAME` يُبقي `/odoo` عند
-> `303 -> /web/database/selector`. اضبطه على اسم القاعدة الذي أُنشئ في الخطوة 4
-> (الافتراضي `odoo20`) ثم أعد إنشاء الحاوية:
-> `docker compose up -d --force-recreate odoo20`.
+> **`ODOO_DB_NAME` هو من يحدد قاعدة البيانات.** مع `list_db = False` لا يستطيع
+> Odoo عرض منتقي قواعد البيانات، لذا الاسم الخاطئ أو الفارغ يُبقي `/odoo` عند
+> `303 -> /web/database/selector`. الافتراضي `odoo20`؛ واختر اسمًا مختلفًا لكل
+> نسخة ثم أعد التشغيل بـ `docker compose up -d`. اضبط `ODOO_AUTO_INIT=0` إن
+> أردت إنشاء القواعد بنفسك عبر `odoo -i base`.
 
 ---
 
 ## ‏🧩 تشغيل أكثر من نسخة
 
-ينسخ `run.sh` المستودع إلى **مجلد جديد**، ويضبط منافذ وأسماء حاويات وشبكة
-خاصة بكل نسخة، ثم ينتظر جاهزية PostgreSQL و Odoo ويهيئ قاعدة Odoo تلقائيًا.
-لن يستبدل مجلدًا موجودًا.
+ينسخ `run.sh` المستودع إلى **مجلد جديد**، ويضبط منافذ واسم قاعدة وأسماء حاويات
+وشبكة خاصة بكل نسخة، ثم ينتظر جاهزية PostgreSQL و Odoo. الحاوية تنشئ قاعدة Odoo
+عند أول تشغيل، لذا ينتهي التثبيت بنسخة جاهزة. لن يستبدل مجلدًا موجودًا.
 
 ```bash
 # النسخة الأولى
@@ -152,7 +156,7 @@ sudo bash run.sh --destination odoo-test --port 11020 --chat 21020 --db odoo_tes
 | `--port` | منفذ Odoo على المضيف (إلزامي) |
 | `--chat` | منفذ المحادثة (إلزامي) |
 | `--db` | اسم قاعدة Odoo (افتراضي `odoo<port>`) |
-| `--skip-init` | تشغيل الحاويات دون تهيئة قاعدة Odoo |
+| `--skip-init` | ضبط `ODOO_AUTO_INIT=0` لعدم إنشاء قاعدة Odoo تلقائيًا |
 
 الروابط بعد التثبيت:
 
@@ -182,6 +186,7 @@ docker compose logs -f
 | `POSTGRES_DB` | `postgre` | قاعدة تهيئة PostgreSQL فقط |
 | `ODOO_ADMIN_PASSWORD` | `Admin@20` | كلمة مرور Odoo الرئيسية |
 | `ODOO_DB_NAME` | `odoo20` | قاعدة Odoo التي تخدمها هذه النسخة (`db_name`)؛ اتركها فارغة لوضع منتقي القواعد |
+| `ODOO_AUTO_INIT` | `1` | إنشاء `ODOO_DB_NAME` بـ `odoo -i base` عند أول تشغيل |
 | `ODOO_HTTP_PORT` | `10020` | منفذ المضيف لـ Odoo |
 | `ODOO_CHAT_PORT` | `20020` | منفذ المضيف للمحادثة |
 | `ODOO_NETWORK` | `odoo20_internal` | الشبكة الداخلية |
@@ -272,8 +277,9 @@ docker compose -f docker-compose.traefik.yml up -d
 | Odoo لا يتصل بقاعدة البيانات | `docker compose logs db odoo20` |
 | فحص جاهزية PostgreSQL | `docker compose exec db pg_isready -U odoo20 -d postgre` |
 | `curl` يعيد الاتصال والسجل يقول `HTTP service running on 127.0.0.1:8069` | أضف `http_interface = 0.0.0.0` إلى `etc/odoo.conf` ثم أعد التشغيل |
-| `500` على صفحة الدخول مع `Database <db> not initialized` | نفّذ `odoo -c /tmp/odoo.conf -d <db> -i base --stop-after-init` |
+| `500` على صفحة الدخول مع `Database <db> not initialized` | ما زال أول تشغيل يُهيّئ القاعدة (تابع `docker compose logs -f odoo20`)، أو أن `ODOO_AUTO_INIT=0`. أنشئها بـ `odoo -c /tmp/odoo.conf -d <db> -i base --stop-after-init` |
 | `303 -> /web/database/selector` على كل الروابط | `ODOO_DB_NAME` فارغ أو لا يطابق قاعدة مهيأة. اضبطه في `.env` ثم `docker compose up -d --force-recreate odoo20` |
+| `Initialising Odoo database ...` لا ينتهي | افحص `docker compose logs db`؛ يجب أن يكون PostgreSQL سليمًا قبل إنشاء القاعدة |
 | `exec: "/entrypoint.sh": permission denied` | أعد إنشاء الحاوية؛ ملفات compose تشغّل entrypoint عبر `["/bin/sh", "/entrypoint.sh"]` |
 | `Unknown command 'odoo'` من `docker compose run` | لا تُمرّر أمرًا يبدأ بـ `odoo`؛ الـ entrypoint يضيفه تلقائيًا |
 | `/` يعيد التوجيه و`/odoo/...` يعمل | سلوك Odoo 20 الطبيعي: انتقلت الواجهة من `/web` إلى `/odoo`. افتح `http://الخادم:10020/odoo` |
