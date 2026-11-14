@@ -148,12 +148,15 @@ set_env() {
 
 set_env "ODOO_HTTP_PORT" "$ODOO_PORT"
 set_env "ODOO_CHAT_PORT" "$CHAT_PORT"
+set_env "ODOO_DB_NAME" "$DB_NAME"
 set_env "ODOO_NETWORK" "odoo20_${INSTANCE_SLUG}_internal"
 set_env "ODOO_CONTAINER_NAME" "odoo20-${INSTANCE_SLUG}"
 set_env "ODOO_DB_CONTAINER_NAME" "odoo20-${INSTANCE_SLUG}-db"
 
-if [[ -n "${SUDO_USER:-}" ]]; then
-    chown "$SUDO_USER" "$PROJECT_DIR/.env"
+# Leave the whole project writable by the invoking user, otherwise .env, etc/
+# and compose files stay root-owned and later edits need sudo.
+if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+    chown -R "$SUDO_USER" "$PROJECT_DIR"
 fi
 
 compose() {

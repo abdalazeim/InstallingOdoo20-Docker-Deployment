@@ -12,6 +12,8 @@ umask 077
 : "${USER:=odoo}"
 : "${PASSWORD:=}"
 : "${ODOO_ADMIN_PASSWORD:=odoo20}"
+: "${ODOO_DB_NAME:=}"
+export ODOO_DB_NAME
 
 # تثبيت متطلبات بايثون الإضافية إذا أضافها المشغل.
 if [ -f /etc/odoo/requirements.txt ]; then
@@ -28,6 +30,7 @@ values = {
     "${ODOO_ADMIN_PASSWORD}": os.environ["ODOO_ADMIN_PASSWORD"],
     "${ODOO_DB_USER}": os.environ["USER"],
     "${ODOO_DB_PASSWORD}": os.environ["PASSWORD"],
+    "${ODOO_DB_NAME}": os.environ["ODOO_DB_NAME"].strip(),
 }
 for placeholder, value in values.items():
     if "\n" in value or "\r" in value:
@@ -36,6 +39,14 @@ for placeholder, value in values.items():
 
 if any(placeholder in source for placeholder in values):
     raise SystemExit("Unresolved environment variable in /etc/odoo/odoo.conf")
+
+# An empty ODOO_DB_NAME means "use the database selector", so drop the option
+# instead of writing an empty value.
+if not values["${ODOO_DB_NAME}"]:
+    source = "".join(
+        line for line in source.splitlines(keepends=True)
+        if not line.lstrip().startswith("db_name")
+    )
 
 config = Path("/tmp/odoo.conf")
 config.write_text(source, encoding="utf-8")

@@ -46,6 +46,7 @@ services:
       - USER=${POSTGRES_USER:-odoo20}
       - PASSWORD=${POSTGRES_PASSWORD:-odoo@20}
       - ODOO_ADMIN_PASSWORD=${ODOO_ADMIN_PASSWORD:-Admin@20}
+      - ODOO_DB_NAME=${ODOO_DB_NAME:-}
       - PIP_BREAK_SYSTEM_PACKAGES=1
     volumes:
       - ./entrypoint.sh:/entrypoint.sh:ro
